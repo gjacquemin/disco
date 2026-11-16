@@ -114,7 +114,7 @@ static esp_err_t upload_post(httpd_req_t *r) {
     if(!ok) { unlink(temp); return reply(r,"507 Insufficient Storage","Echec de sauvegarde."); }
     f=fopen(temp,"rb"); wav_info w;
     ok=f && wav_read(f,&w); if(f) fclose(f);
-    if(!ok) { unlink(temp); return reply(r,"415 Unsupported Media Type","WAV requis : PCM mono 16 bits, 44100 ou 48000 Hz."); }
+    if(!ok) { unlink(temp); return reply(r,"415 Unsupported Media Type","WAV requis : PCM mono ou stereo 16 bits, 44100 ou 48000 Hz."); }
     // Serveur mono-tache, operations seriees ; aucun lecteur actif a ce stade.
     if(rename(temp,target)) { unlink(temp); return reply(r,"500 Internal Server Error","Impossible de finaliser le fichier."); }
     return changed(r,"201 Created","Fichier ajoute.");

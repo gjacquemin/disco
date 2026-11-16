@@ -9,7 +9,7 @@ Lecteur pour **ESP32-A1S Audio Kit V2.2**, développé pour **Arduino IDE**. À 
 - Aucune reprise après coupure : chaque morceau commence au début.
 - Wi-Fi après le morceau par défaut ; option **fast** pour le lancer pendant la lecture.
 - Interface Web sans Internet ni dépendance à un CDN : envoi, suppression, renommage, écoute manuelle, arrêt, volume mémorisé.
-- Sortie mono dupliquée sur les deux canaux du jack EARPHONES.
+- WAV mono dupliqués sur les deux sorties ; WAV stéréo avec canaux gauche et droit conservés sur le jack EARPHONES.
 
 ## Matériel et branchements
 
@@ -43,14 +43,16 @@ La SD utilise le mode 1 bit : CLK14, CMD15, D0=2. Aucun pilotage d'alimentation 
 
 Exemples : `Bonjour.wav`, `Ambiance foret.wav`, `Musique_03.wav`. Aucun numéro ni préfixe n'est imposé. Les anciens fichiers placés dans un sous-dossier doivent être déplacés à la racine : les sous-dossiers ne sont pas parcourus.
 
-Format accepté : **WAV PCM entier signé 16 bits, mono, 44 100 ou 48 000 Hz**. MP3, stéréo, 24 bits, float et WAV extensible ne sont pas acceptés. Les fichiers invalides sont exclus de l'urne.
+Format accepté : **WAV PCM entier signé 16 bits, mono ou stéréo, 44 100 ou 48 000 Hz**. MP3, 24 bits, float et WAV extensible ne sont pas acceptés. Les fichiers invalides sont exclus de l'urne.
 
-Noms courts conseillés ; espaces et accents acceptés. Éviter les noms commençant par un point et les caractères `/ \ : * ? " < > |`. Limite : 1024 WAV compatibles ; conserver moins de fichiers réduit le temps de scan et la mémoire utilisée. Envoi Web limité par défaut à 64 Mio par fichier.
+Noms courts conseillés ; espaces et accents acceptés. Éviter les noms commençant par un point et les caractères `/ \ : * ? " < > |`. Limite : 1024 WAV compatibles ; conserver moins de fichiers réduit le temps de scan et la mémoire utilisée. Envoi Web limité par défaut à 128 Mio par fichier.
 
 Conversion avec FFmpeg :
 ```sh
-ffmpeg -i entree.wav -ac 1 -ar 48000 -c:a pcm_s16le sortie.wav
+ffmpeg -i entree.wav -ar 48000 -c:a pcm_s16le sortie.wav
 ```
+
+Cette conversion conserve les canaux de la source. Ajouter `-ac 1` pour forcer le mono ou `-ac 2` pour forcer la stéréo. Mono et stéréo peuvent cohabiter sur la carte, sans réglage supplémentaire.
 
 ## Installer et configurer Arduino IDE
 
@@ -99,7 +101,7 @@ Un seul fichier personnel à modifier : **Disco_ESP/config.local.h**. `config.h`
 | `AUDIO_DIRECTORY` | `"/sdcard"` | Point de montage de la racine de la SD, à conserver pour cet usage |
 | `PLAYBACK_MODE` | `PLAYBACK_URN` | Urne ; choisir `PLAYBACK_RANDOM` pour le tirage indépendant |
 | `AVOID_LAST_TRACK` | `1` | Exclure le dernier titre, seulement en mode aléatoire |
-| `WEB_MAX_FILE_BYTES` | `64U * 1024U * 1024U` | Taille maximale d'un envoi Web |
+| `WEB_MAX_FILE_BYTES` | `128U * 1024U * 1024U` | Taille maximale d'un envoi Web |
 | `CODEC_PROFILE` | `0` | Détection automatique ; voir les profils ci-dessous |
 
 Recompiler après modification. Le volume réglé depuis le Web est prioritaire sur `AUDIO_VOLUME`, y compris après une mise à jour du firmware sans effacement de flash.
@@ -211,8 +213,8 @@ Un fichier ignoré déjà publié demeure dans l'historique. Si des identifiants
 
 Le projet doit être validé sur la révision de carte utilisée : sortie jack, mode fast, volume pendant la lecture et coupures d'alimentation. Vérifier notamment :
 
-1. Trois WAV à la racine : un seul morceau au démarrage, puis silence.
-2. Coupure pendant un morceau : démarrage suivant depuis le début du prochain titre de l'urne.
+1. Trois WAV mono et stéréo à la racine : un seul morceau au démarrage, puis silence.
+2. Avec un WAV de test gauche/droite, vérifier la séparation des canaux sur les enceintes. Coupure pendant un morceau : démarrage suivant depuis le début du prochain titre de l'urne.
 3. Mode fast : apparition de la page pendant un morceau suffisamment long.
 4. Écoute manuelle puis arrêt : urne inchangée.
 5. Volume modifié et mémorisé : même niveau après remise sous tension.

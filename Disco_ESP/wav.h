@@ -3,10 +3,10 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdbool.h>
-typedef struct { uint32_t rate, bytes; long offset; } wav_info;
+typedef struct { uint32_t rate, bytes; uint16_t channels; long offset; } wav_info;
 static uint16_t le16(const unsigned char *p) { return p[0] | (p[1]<<8); }
 static uint32_t le32(const unsigned char *p) { return (uint32_t)p[0] | ((uint32_t)p[1]<<8) | ((uint32_t)p[2]<<16) | ((uint32_t)p[3]<<24); }
-/* PCM mono 16 bits, 44.1/48 kHz. Supporte les chunks JUNK/LIST et padding RIFF. */
+/* PCM mono/stereo 16 bits, 44.1/48 kHz. Supporte les chunks JUNK/LIST et padding RIFF. */
 static bool wav_read(FILE *f, wav_info *w) {
     unsigned char h[16]; bool fmt=false, data=false;
     if(fseek(f,0,SEEK_END)) return false;
@@ -21,14 +21,14 @@ static bool wav_read(FILE *f, wav_info *w) {
         if(next>end) return false;
         if(!memcmp(h,"fmt ",4)) {
             if(n<16 || fread(h,1,16,f)!=16) return false;
-            w->rate=le32(h+4);
-            if(le16(h)!=1 || le16(h+2)!=1 || le16(h+12)!=2 || le16(h+14)!=16 ||
-               (w->rate!=44100 && w->rate!=48000) || le32(h+8)!=w->rate*2) return false;
+            w->rate=le32(h+4); w->channels=le16(h+2);
+            if(le16(h)!=1 || (w->channels!=1 && w->channels!=2) || le16(h+12)!=w->channels*2 || le16(h+14)!=16 ||
+               (w->rate!=44100 && w->rate!=48000) || le32(h+8)!=w->rate*w->channels*2) return false;
             fmt=true;
         } else if(!memcmp(h,"data",4) && !data) {
             w->offset=pos; w->bytes=n; data=true;
         }
         if(fseek(f,(long)next,SEEK_SET)) return false;
     }
-    return fmt && data && w->bytes>0 && !(w->bytes&1) && fseek(f,w->offset,SEEK_SET)==0;
+    return fmt && data && w->bytes>0 && w->bytes%(w->channels*2)==0 && fseek(f,w->offset,SEEK_SET)==0;
 }

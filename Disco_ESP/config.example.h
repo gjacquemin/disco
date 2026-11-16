@@ -18,7 +18,7 @@
 // Seulement en mode RANDOM : exclure le dernier morceau.
 #define AVOID_LAST_TRACK 1
 
-#define WEB_MAX_FILE_BYTES (64U * 1024U * 1024U)
+#define WEB_MAX_FILE_BYTES (128U * 1024U * 1024U)
 
 // 0 automatique ; 1 AC101 ; 2 ES8388 variante 5 ; 3 ES8388 variante 7
 #define CODEC_PROFILE 0

@@ -28,6 +28,7 @@
 #include "selection.h"
 #include "config.h"
 #include "wav.h"
+#include "pcm.h"
 #include "web.h"
 static const char *TAG="SON_UNIQUE";
 static EventGroupHandle_t wifi_events;
@@ -145,26 +146,27 @@ static void play_file(const char *path,bool boot) {
     if(i2s_set_pin(I2S_NUM_0,&pins)!=ESP_OK) { error="Broches I2S invalides."; goto cleanup; }
     int applied_volume=current_volume();
     if(codec_start(&profile,w.rate,applied_volume)!=ESP_OK) { error="Initialisation codec impossible."; goto cleanup; }
-    int16_t mono[512],stereo[1024]; uint32_t remaining=w.bytes,frames=0;
+    int16_t input[512],stereo[1024]; uint32_t remaining=w.bytes,frames=0;
     while(remaining && !stopped()) {
         int desired=current_volume();
         if(desired!=applied_volume) {
             if(codec_set_volume(&profile,desired)!=ESP_OK) { error="Reglage du volume impossible sur le codec."; break; }
             applied_volume=desired;
         }
-        size_t want=remaining<sizeof(mono)?remaining:sizeof(mono);
-        size_t got=fread(mono,1,want,f);
+        size_t want=remaining<sizeof(input)?remaining:sizeof(input);
+        size_t got=fread(input,1,want,f);
         if(got!=want) { error="Erreur lecture SD."; break; }
-        for(size_t i=0;i<got/2;i++) stereo[2*i]=stereo[2*i+1]=applied_volume?mono[i]:0;
+        size_t block_frames=got/(w.channels*sizeof(int16_t));
+        size_t output_bytes=pcm_to_stereo(input,stereo,block_frames,w.channels,applied_volume==0);
         size_t sent=0;
-        while(sent<got*2) {
+        while(sent<output_bytes) {
             size_t wrote=0;
-            if(i2s_write(I2S_NUM_0,(uint8_t*)stereo+sent,got*2-sent,&wrote,pdMS_TO_TICKS(1000))!=ESP_OK || !wrote) {
+            if(i2s_write(I2S_NUM_0,(uint8_t*)stereo+sent,output_bytes-sent,&wrote,pdMS_TO_TICKS(1000))!=ESP_OK || !wrote) {
                 error="Erreur sortie I2S."; goto cleanup;
             }
             sent+=wrote;
         }
-        frames+=got/2; remaining-=got;
+        frames+=block_frames; remaining-=got;
         // More than the complete DMA capacity has been queued: playback has started.
         // Do not enable SAR entropy here; selection finished before audio/Wi-Fi.
         if(boot && WIFI_FAST && frames>8*256) start_wifi();
