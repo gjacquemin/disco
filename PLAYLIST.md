@@ -22,6 +22,7 @@ Sélection proposée pour Disco, avec une intention : faire commencer chaque ext
 | Daniel Balavoine | Tous les cris les SOS | 1985 |
 | Daniel Balavoine | Quand on arrive en ville | 1979 |
 | Demis Roussos | Quand je t'aime | 1987 |
+| Desireless | Voyage, Voyage | 1986 |
 | Diana Ross | I'm Coming Out | 1980 |
 | Diane Tell | Si j’étais un homme | 1980 |
 | Elsa | T’en va pas | 1986 |
