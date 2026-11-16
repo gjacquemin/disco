@@ -4,16 +4,15 @@ Ce guide décrit le montage retenu pour Disco avec une carte **ESP32-A1S Audio K
 
 ## Matériel
 
-| Composant | Référence retenue | Rôle | Lien |
-|---|---|---|---|
-| Carte audio | ESP32-A1S Audio Kit | Lit les WAV et pilote son codec audio AC101 ou ES8388 ; la sortie utilise ce codec, pas le petit DAC interne de l'ESP32. | [Référence Amazon](https://www.amazon.fr/dp/B0DF58DCQ7) |
-| Stockage | microSD SanDisk 64 Go | Stocke les fichiers audio ; vérifier le format de la carte avant usage. | [Référence Amazon](https://www.amazon.fr/dp/B0B7NXBM6P) |
-| Enceintes | Creative Pebble 2.0 | Enceintes amplifiées avec entrée audio mini-jack et alimentation USB. | [Référence Amazon](https://www.amazon.fr/dp/B0791J2658) |
-| Alimentation | Chargeur secteur double USB Nisiyama | Alimente séparément la carte et les enceintes via ses deux ports. | [Référence Amazon](https://www.amazon.fr/dp/B0BXD4XRM2) |
-| Boule à facettes | Eurolite Mirror Ball 30 cm gold | Boule à facettes | [Référence Thomann](https://www.thomann.fr/eurolite_mirror_ball_30_cm_gold.htm) |
-| Moteur | Eurolite MD-1030 Mirror Ball Motor 3kg | Moteur rotatif avec fiche d'alimentation | [Référence Thomann](https://www.thomann.fr/eurolite_md_1030_mirror_ball_motor_3kg.htm) |
-| Lumière | Eurolite LED PST-5 QCL Spot WH | Projecteur LED | [Référence Thomann](https://www.thomann.fr/eurolite_led_pst_5_qcl_spot_wh.htm) |
-
+| Composant | Référence retenue | Rôle | Prix public | Lien |
+|---|---|---|---|---|
+| Carte audio | ESP32-A1S Audio Kit | Lit les WAV et pilote son codec audio AC101 ou ES8388 ; la sortie utilise ce codec, pas le petit DAC interne de l'ESP32. | ~28,00 € | [Référence Amazon](https://www.amazon.fr/dp/B0DF58DCQ7) |
+| Stockage | microSD SanDisk 64 Go | Stocke les fichiers audio ; vérifier le format de la carte avant usage. | ~12,99 € | [Référence Amazon](https://www.amazon.fr/dp/B0B7NXBM6P) |
+| Enceintes | Creative Pebble 2.0 | Enceintes amplifiées avec entrée audio mini-jack et alimentation USB. | ~24,99 € | [Référence Amazon](https://www.amazon.fr/dp/B0791J2658) |
+| Alimentation | Chargeur secteur double USB Nisiyama | Alimente séparément la carte et les enceintes via ses deux ports. | ~13,99 € | [Référence Amazon](https://www.amazon.fr/dp/B0BXD4XRM2) |
+| Boule à facettes | Eurolite Mirror Ball 30 cm gold | Boule à facettes | 39,00 € | [Référence Thomann](https://www.thomann.fr/eurolite_mirror_ball_30_cm_gold.htm) |
+| Moteur | Eurolite MD-1030 Mirror Ball Motor 3kg | Moteur rotatif avec fiche d'alimentation | 14,90 € | [Référence Thomann](https://www.thomann.fr/eurolite_md_1030_mirror_ball_motor_3kg.htm) |
+| Lumière | Eurolite LED PST-5 QCL Spot WH | Projecteur LED | 45,00 € | [Référence Thomann](https://www.thomann.fr/eurolite_led_pst_5_qcl_spot_wh.htm) |
 Les liens identifient les références choisies ; vérifier les caractéristiques et la révision effectivement livrées. Prévoir **5 V / 2 A disponibles pour la carte**, plus le courant demandé par les enceintes.
 
 ## Branchements
