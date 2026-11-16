@@ -153,7 +153,7 @@ carte_sd=""
 if [ ${#volumes_externes[@]} -eq 0 ]; then
     echo "Aucune carte SD ou volume externe détecté dans /Volumes."
 elif [ ${#volumes_externes[@]} -eq 1 ]; then
-    carte_sd="${volumes_externes}"
+    carte_sd="${volumes_externes[0]}"
     echo "Carte SD / Volume détecté : $carte_sd"
 else
     echo "Plusieurs volumes externes détectés :"
