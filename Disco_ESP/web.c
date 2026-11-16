@@ -8,6 +8,7 @@
 #include <errno.h>
 #include "esp_http_server.h"
 #include "esp_log.h"
+#include "diagnostics.h"
 #include "nvs.h"
 #include "cJSON.h"
 #include "config.h"
@@ -197,7 +198,7 @@ void web_start(void) {
     // May run during playback in FAST mode; never mutate SD here.
     httpd_config_t cfg=HTTPD_DEFAULT_CONFIG(); cfg.stack_size=8192; cfg.max_uri_handlers=11;
     cfg.recv_wait_timeout=10; cfg.send_wait_timeout=10; cfg.lru_purge_enable=true;
-    if(httpd_start(&server,&cfg)!=ESP_OK) { server=NULL; ESP_LOGE("WEB","Echec demarrage"); return; }
+    if(httpd_start(&server,&cfg)!=ESP_OK) { server=NULL; DISCO_LOGE("WEB","Echec demarrage"); return; }
     const httpd_uri_t routes[]={
         {.uri="/",.method=HTTP_GET,.handler=index_get},
         {.uri="/api/urn",.method=HTTP_GET,.handler=urn_get},
@@ -212,7 +213,7 @@ void web_start(void) {
         {.uri="/api/rename",.method=HTTP_POST,.handler=rename_post}
     };
     for(unsigned i=0;i<sizeof(routes)/sizeof(routes[0]);i++) {
-        if(httpd_register_uri_handler(server,&routes[i])!=ESP_OK) { httpd_stop(server); server=NULL; ESP_LOGE("WEB","Echec routes"); return; }
+        if(httpd_register_uri_handler(server,&routes[i])!=ESP_OK) { httpd_stop(server); server=NULL; DISCO_LOGE("WEB","Echec routes"); return; }
     }
-    ESP_LOGI("WEB","Serveur disponible sur http://ADRESSE_IP/ (port 80)");
+    DISCO_LOGI("WEB","Serveur disponible sur http://ADRESSE_IP/ (port 80)");
 }

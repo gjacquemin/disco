@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
+#include "driver/i2c.h"
 #include "player.h"
 #include <sys/stat.h>
 #include "freertos/FreeRTOS.h"
@@ -12,13 +13,14 @@
 #include "freertos/event_groups.h"
 #include "esp_system.h"
 #include "esp_log.h"
+#include "diagnostics.h"
 #include "esp_timer.h"
 #include "esp_wifi.h"
 #include "esp_event.h"
 #include "esp_netif.h"
 #include "esp_vfs_fat.h"
 #include "driver/sdmmc_host.h"
-#include "driver/i2s_std.h"
+#include "driver/i2s.h"
 #include "driver/gpio.h"
 #include "bootloader_random.h"
 #include "nvs_flash.h"
@@ -28,8 +30,10 @@
 #include "config.h"
 #include "wav.h"
 #include "pcm.h"
+#include "diagnostic_tone.h"
 #include "web.h"
-static const char *TAG="SON_UNIQUE";
+static const char *TAG="DISCO";
+enum { AUDIO_DMA_COUNT=16, AUDIO_DMA_FRAMES=256 };
 static EventGroupHandle_t wifi_events;
 static bool wifi_started;
 static void wifi_event(void *arg, esp_event_base_t base, int32_t id, void *data) {
@@ -37,7 +41,7 @@ static void wifi_event(void *arg, esp_event_base_t base, int32_t id, void *data)
     if(base==WIFI_EVENT && id==WIFI_EVENT_STA_DISCONNECTED) xEventGroupSetBits(wifi_events,2);
     if(base==IP_EVENT && id==IP_EVENT_STA_GOT_IP) {
         ip_event_got_ip_t *e=data;
-        ESP_LOGI(TAG,"Wi-Fi connecte : " IPSTR,IP2STR(&e->ip_info.ip));
+        DISCO_LOGI(TAG,"Wi-Fi connecte : " IPSTR,IP2STR(&e->ip_info.ip));
         xEventGroupSetBits(wifi_events,1);
     }
 }
@@ -53,21 +57,24 @@ static void wifi_task(void *arg) {
     ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT,IP_EVENT_STA_GOT_IP,wifi_event,NULL));
     wifi_config_t cfg={0};
     size_t sl=strlen(WIFI_SSID), pl=strlen(WIFI_PASSWORD);
-    if(!sl || sl>32 || pl>63) { ESP_LOGE(TAG,"Identifiants Wi-Fi invalides"); vTaskDelete(NULL); return; }
+    if(!sl || sl>32 || pl>63) { DISCO_LOGE(TAG,"Identifiants Wi-Fi invalides"); vTaskDelete(NULL); return; }
     memcpy(cfg.sta.ssid,WIFI_SSID,sl); memcpy(cfg.sta.password,WIFI_PASSWORD,pl);
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA,&cfg));
-    ESP_LOGI(TAG,"Tentative Wi-Fi (FAST=%d)",WIFI_FAST);
+    DISCO_LOGI(TAG,"Tentative Wi-Fi (FAST=%d)",WIFI_FAST);
     ESP_ERROR_CHECK(esp_wifi_start());
     EventBits_t b=xEventGroupWaitBits(wifi_events,3,pdFALSE,pdFALSE,pdMS_TO_TICKS(WIFI_TIMEOUT_MS));
-    if(!(b&1)) { ESP_LOGW(TAG,"Wi-Fi indisponible : aucune incidence sur la lecture"); esp_wifi_stop(); }
+    if(!(b&1)) { DISCO_LOGW(TAG,"Wi-Fi indisponible : aucune incidence sur la lecture"); esp_wifi_stop(); }
     if(b&1) web_start();
     vTaskDelete(NULL);
 }
 static void start_wifi(void) {
-    if(wifi_started || !strcmp(WIFI_SSID,"TON_SSID") || !strlen(WIFI_SSID)) return;
+    if(wifi_started) return;
+    if(!strcmp(WIFI_SSID,"TON_SSID") || !strlen(WIFI_SSID)) {
+        wifi_started=true; DISCO_LOGI(TAG,"Wi-Fi desactive : SSID non configure"); return;
+    }
     wifi_started=true;
-    if(xTaskCreate(wifi_task,"wifi",4096,NULL,3,NULL)!=pdPASS) ESP_LOGE(TAG,"Creation tache Wi-Fi impossible");
+    if(xTaskCreate(wifi_task,"wifi",4096,NULL,3,NULL)!=pdPASS) DISCO_LOGE(TAG,"Creation tache Wi-Fi impossible");
 }
 static bool mount_sd(void) {
     sdmmc_host_t host=SDMMC_HOST_DEFAULT();
@@ -75,7 +82,8 @@ static bool mount_sd(void) {
     esp_vfs_fat_sdmmc_mount_config_t cfg={.format_if_mount_failed=false,.max_files=3,.allocation_unit_size=16384};
     sdmmc_card_t *card=NULL;
     esp_err_t err=esp_vfs_fat_sdmmc_mount("/sdcard",&host,&slot,&cfg,&card);
-    if(err!=ESP_OK) ESP_LOGE(TAG,"Carte SD : %s",esp_err_to_name(err));
+    if(err!=ESP_OK) DISCO_LOGE(TAG,"Carte SD : %s",esp_err_to_name(err));
+    if(err==ESP_OK) DISCO_LOGI(TAG,"Carte SD montee : bus 1 bit");
     return err==ESP_OK;
 }
 // The HTTP server serializes all commands. Only this worker owns the codec/I2S.
@@ -129,48 +137,54 @@ esp_err_t player_set_volume(int volume) {
     return err;
 }
 static void play_file(const char *path,bool boot) {
-    FILE *f=fopen(path,"rb"); wav_info w;
-    const char *error=NULL; bool enabled=false,bus=false;
-    i2s_chan_handle_t tx=NULL;
+    bool diagnostic=boot && AUDIO_DIAGNOSTIC;
+    FILE *f=diagnostic?NULL:fopen(path,"rb"); wav_info w={0};
+    uint32_t max_read_us=0,slow_reads=0;
+    const char *error=NULL; bool installed=false,bus=false;
     codec_profile profile;
-    if(!f || !wav_read(f,&w)) { error="WAV absent ou incompatible."; goto cleanup; }
+    if(diagnostic) { w.rate=44100; w.channels=1; w.bytes=7U*44100U*2U; }
+    else if(!f || !wav_read(f,&w)) { error="WAV absent ou incompatible."; goto cleanup; }
+    DISCO_LOGI(TAG,"Lecture %s : %lu Hz, PCM16, %u canal(aux), volume=%d, WIFI_FAST=%d",
+               diagnostic?"TEST 1 kHz 5 s + silence 2 s":path,(unsigned long)w.rate,w.channels,
+               diagnostic?35:current_volume(),WIFI_FAST);
     if(codec_detect(&profile)!=ESP_OK) { error="Codec non reconnu."; goto cleanup; }
     bus=true;
-    i2s_chan_config_t channel=I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_0,I2S_ROLE_MASTER);
-    channel.dma_desc_num=8; channel.dma_frame_num=256;
-    channel.auto_clear=true; // Emit silence on underrun, never repeat old DMA audio.
-    if(i2s_new_channel(&channel,&tx,NULL)!=ESP_OK) { error="Allocation I2S impossible."; goto cleanup; }
-    i2s_std_config_t i2s={
-        .clk_cfg=I2S_STD_CLK_DEFAULT_CONFIG(w.rate),
-        .slot_cfg=I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT,I2S_SLOT_MODE_STEREO),
-        .gpio_cfg={.mclk=GPIO_NUM_0,.bclk=profile.bclk,.ws=profile.lrck,
-                   .dout=profile.dout,.din=I2S_GPIO_UNUSED}
-    };
-    i2s.clk_cfg.clk_src=I2S_CLK_SRC_APLL;
-    i2s.clk_cfg.mclk_multiple=I2S_MCLK_MULTIPLE_256;
-    i2s.slot_cfg.slot_mask=I2S_STD_SLOT_BOTH;
-    if(i2s_channel_init_std_mode(tx,&i2s)!=ESP_OK) { error="Configuration I2S impossible."; goto cleanup; }
-    // Start MCLK/BCLK before initializing the external codec, as in the 2.x version.
-    if(i2s_channel_enable(tx)!=ESP_OK) { error="Demarrage I2S impossible."; goto cleanup; }
-    enabled=true;
-    int applied_volume=current_volume();
+    DISCO_LOGI(TAG,"I2S Philips 16 bits stereo ; MCLK=0 BCLK=%d WS=%d DOUT=%d ; DMA=%d x %d",
+               profile.bclk,profile.lrck,profile.dout,AUDIO_DMA_COUNT,AUDIO_DMA_FRAMES);
+    i2s_config_t i2s={.mode=I2S_MODE_MASTER|I2S_MODE_TX,.sample_rate=w.rate,
+        .bits_per_sample=I2S_BITS_PER_SAMPLE_16BIT,.channel_format=I2S_CHANNEL_FMT_RIGHT_LEFT,
+        .communication_format=I2S_COMM_FORMAT_STAND_I2S,.intr_alloc_flags=0,
+        .dma_buf_count=AUDIO_DMA_COUNT,.dma_buf_len=AUDIO_DMA_FRAMES,.use_apll=true,.tx_desc_auto_clear=true,.fixed_mclk=w.rate*256};
+    if(i2s_driver_install(I2S_NUM_0,&i2s,0,NULL)!=ESP_OK) { error="Initialisation I2S impossible."; goto cleanup; }
+    installed=true;
+    i2s_pin_config_t pins={.mck_io_num=0,.bck_io_num=profile.bclk,.ws_io_num=profile.lrck,.data_out_num=profile.dout,.data_in_num=I2S_PIN_NO_CHANGE};
+    if(i2s_set_pin(I2S_NUM_0,&pins)!=ESP_OK) { error="Broches I2S invalides."; goto cleanup; }
+    int applied_volume=diagnostic?35:current_volume();
     if(codec_start(&profile,w.rate,applied_volume)!=ESP_OK) { error="Initialisation codec impossible."; goto cleanup; }
-    int16_t input[512],stereo[1024]; uint32_t remaining=w.bytes,frames=0;
+    static int16_t input[2048],stereo[4096]; uint32_t remaining=w.bytes,frames=0;
     while(remaining && !stopped()) {
-        int desired=current_volume();
+        int desired=diagnostic?35:current_volume();
         if(desired!=applied_volume) {
             if(codec_set_volume(&profile,desired)!=ESP_OK) { error="Reglage du volume impossible sur le codec."; break; }
             applied_volume=desired;
         }
         size_t want=remaining<sizeof(input)?remaining:sizeof(input);
-        size_t got=fread(input,1,want,f);
+        int64_t read_start=esp_timer_get_time();
+        size_t got=want;
+        if(diagnostic) diagnostic_samples(input,want/sizeof(int16_t),frames);
+        else got=fread(input,1,want,f);
+        uint32_t read_us=(uint32_t)(esp_timer_get_time()-read_start);
+        if(!diagnostic) {
+            if(read_us>max_read_us) max_read_us=read_us;
+            if(read_us>20000) slow_reads++;
+        }
         if(got!=want) { error="Erreur lecture SD."; break; }
         size_t block_frames=got/(w.channels*sizeof(int16_t));
         size_t output_bytes=pcm_to_stereo(input,stereo,block_frames,w.channels,applied_volume==0);
         size_t sent=0;
         while(sent<output_bytes) {
             size_t wrote=0;
-            if(i2s_channel_write(tx,(uint8_t*)stereo+sent,output_bytes-sent,&wrote,1000)!=ESP_OK || !wrote) {
+            if(i2s_write(I2S_NUM_0,(uint8_t*)stereo+sent,output_bytes-sent,&wrote,pdMS_TO_TICKS(1000))!=ESP_OK || !wrote) {
                 error="Erreur sortie I2S."; goto cleanup;
             }
             sent+=wrote;
@@ -178,28 +192,29 @@ static void play_file(const char *path,bool boot) {
         frames+=block_frames; remaining-=got;
         // More than the complete DMA capacity has been queued: playback has started.
         // Do not enable SAR entropy here; selection finished before audio/Wi-Fi.
-        if(boot && WIFI_FAST && frames>8*256) start_wifi();
+        if(boot && !diagnostic && WIFI_FAST && frames>AUDIO_DMA_COUNT*AUDIO_DMA_FRAMES) start_wifi();
     }
     memset(stereo,0,sizeof(stereo));
     if(!stopped() && !error) for(int i=0;i<6;i++) {
         size_t wrote=0;
-        if(i2s_channel_write(tx,stereo,sizeof(stereo),&wrote,1000)!=ESP_OK || wrote!=sizeof(stereo)) {
+        if(i2s_write(I2S_NUM_0,stereo,sizeof(stereo),&wrote,pdMS_TO_TICKS(1000))!=ESP_OK || wrote!=sizeof(stereo)) {
             error="Erreur fin de lecture."; break;
         }
     }
 cleanup:
     if(f) fclose(f);
     if(bus) codec_mute(&profile);
-    if(enabled) i2s_channel_disable(tx);
-    if(tx) i2s_del_channel(tx);
-    if(bus) codec_close();
-    if(error) ESP_LOGE(TAG,"%s",error);
+    if(installed) { i2s_stop(I2S_NUM_0); i2s_driver_uninstall(I2S_NUM_0); }
+    if(bus) i2c_driver_delete(I2C_NUM_0);
+    DISCO_LOGI(TAG,"Lecture terminee (%s) ; lecture SD max=%lu us, blocs >20 ms=%lu (pas un compteur de sous-alimentations DMA)",
+               error?"erreur":stopped()?"stop":"fin",(unsigned long)max_read_us,(unsigned long)slow_reads);
+    if(error) DISCO_LOGE(TAG,"%s",error);
     finish(error);
     if(boot) start_wifi(); // Default: after sound; FAST fallback for short tracks/errors.
 }
 void player_run(void) {
     esp_err_t err=nvs_flash_init();
-    if(err!=ESP_OK) { ESP_LOGE(TAG,"NVS : %s. Arret.",esp_err_to_name(err)); return; }
+    if(err!=ESP_OK) { DISCO_LOGE(TAG,"NVS : %s. Arret.",esp_err_to_name(err)); return; }
     nvs_handle_t nvs;
     if(nvs_open("audio_settings",NVS_READONLY,&nvs)==ESP_OK) {
         uint8_t v;
@@ -208,10 +223,13 @@ void player_run(void) {
     }
     play_queue=xQueueCreate(1,sizeof(play_command));
     if(!play_queue) { finish("Memoire insuffisante."); start_wifi(); return; }
+    DISCO_LOGI(TAG,"Volume memorise/initial=%d ; selection=%s",current_volume(),PLAYBACK_MODE==PLAYBACK_URN?"urne":"aleatoire");
     bool mounted=mount_sd();
     if(mounted) unlink(AUDIO_DIRECTORY "/.upload.part"); // Cleanup BEFORE all audio/HTTP.
     char chosen[512];
-    err=mounted?selection_take(chosen):ESP_FAIL;
+    if(AUDIO_DIAGNOSTIC) { strcpy(chosen,"test interne"); err=ESP_OK; }
+    else err=mounted?selection_take(chosen):ESP_FAIL;
+    if(err!=ESP_OK) DISCO_LOGE(TAG,"Selection impossible : %s",esp_err_to_name(err));
     if(err==ESP_OK) {
         portENTER_CRITICAL(&player_lock); strcpy(status.path,chosen); portEXIT_CRITICAL(&player_lock);
         play_file(chosen,true);

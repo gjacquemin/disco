@@ -22,3 +22,10 @@
 
 // 0 automatique ; 1 AC101 ; 2 ES8388 variante 5 ; 3 ES8388 variante 7
 #define CODEC_PROFILE 0
+
+// Journal Disco sur Serial, independant de Core Debug Level. Pas d'attente USB.
+#define SERIAL_DIAGNOSTICS 1
+// 1 : test interne 1 kHz puis silence, sans lire de WAV ni consommer l'urne.
+// Wi-Fi apres le test meme si WIFI_FAST=1 ; volume temporaire 35, non memorise.
+// Remettre a 0 pour le fonctionnement normal.
+#define AUDIO_DIAGNOSTIC 0

@@ -5,7 +5,6 @@
 #include <dirent.h>
 #include <sys/stat.h>
 #include "esp_system.h"
-#include "esp_random.h"
 #include "bootloader_random.h"
 #include "nvs.h"
 #include "mbedtls/sha256.h"
@@ -58,9 +57,9 @@ static esp_err_t scan(unsigned char digest[32]) {
     if(err!=ESP_OK) { release_catalog(); return err; }
     if(count) qsort(paths,count,sizeof(*paths),compare_paths);
     mbedtls_sha256_context sha; mbedtls_sha256_init(&sha);
-    mbedtls_sha256_starts(&sha,0);
-    for(unsigned i=0;i<count;i++) mbedtls_sha256_update(&sha,(unsigned char*)paths[i],strlen(paths[i])+1);
-    mbedtls_sha256_finish(&sha,digest); mbedtls_sha256_free(&sha);
+    mbedtls_sha256_starts_ret(&sha,0);
+    for(unsigned i=0;i<count;i++) mbedtls_sha256_update_ret(&sha,(unsigned char*)paths[i],strlen(paths[i])+1);
+    mbedtls_sha256_finish_ret(&sha,digest); mbedtls_sha256_free(&sha);
     return ESP_OK;
 }
 static esp_err_t save(nvs_handle_t nvs) {

@@ -54,7 +54,7 @@ Le script ne formate aucun disque. Les dossiers locaux SD/ et MP3/ ne sont pas �
 1. Installer Arduino IDE 2.x.
 2. Ajouter cette URL dans Préférences → URL de gestionnaire de cartes supplémentaires :
    https://espressif.github.io/arduino-esp32/package_esp32_index.json
-3. Dans le gestionnaire de cartes, installer **esp32 par Espressif Systems, version 3.3.12**, référence de cette variante. Ne pas utiliser 2.x avec ces sources. Les autres versions 3.x ne sont pas toutes validées ; les premières 3.0.x ne disposent pas du pilote I²C utilisé ici.
+3. Dans le gestionnaire de cartes, installer **esp32 par Espressif Systems, version 2.0.17 exactement**. Les versions 3.x ne conviennent pas au pilote I2S utilisé ici.
 4. Copier `Disco_ESP/config.example.h` en `Disco_ESP/config.local.h` s'il n'existe pas déjà.
 5. Ouvrir `Disco_ESP/Disco_ESP.ino`, avec tous ses fichiers voisins. Aucune bibliothèque supplémentaire à installer.
 6. Renseigner les réglages dans **config.local.h**.
@@ -198,7 +198,7 @@ Un fichier ignoré déjà publié demeure dans l'historique. Si des identifiants
 
 ## Vérification sur matériel
 
-Cette variante migrée doit être validée sur la révision de carte utilisée : sortie jack, mode fast, volume pendant la lecture et coupures d'alimentation. Vérifier notamment :
+Le projet doit être validé sur la révision de carte utilisée : sortie jack, mode fast, volume pendant la lecture et coupures d'alimentation. Vérifier notamment :
 
 1. Trois WAV mono et stéréo à la racine : un seul morceau au démarrage, puis silence.
 2. Avec un WAV de test gauche/droite, vérifier la séparation des canaux sur les enceintes. Coupure pendant un morceau : démarrage suivant depuis le début du prochain titre de l'urne.
@@ -212,3 +212,41 @@ Aucun essai sur carte physique n'a été effectué pour cette version. Les compi
 ## Licence
 
 GPL-3.0-or-later. Voir [LICENSE](LICENSE) et [THIRD_PARTY.md](THIRD_PARTY.md) pour les pilotes adaptés et les notices à conserver.
+
+## Diagnostic : console et grésillements
+
+Le journal propre à Disco utilise directement `Serial`, à **115200 bauds**,
+avec `SERIAL_DIAGNOSTICS 1` dans `config.local.h`. Il est indépendant de
+**Core Debug Level** (qui reste utile pour les traces des pilotes Espressif).
+Ouvrir le moniteur série puis appuyer sur **RST** : les messages du démarrage
+peuvent être manqués si le moniteur est ouvert après la mise sous tension.
+Aucune attente du moniteur n'est ajoutée au démarrage.
+
+Les traces donnent la version Arduino, le volume effectif, le codec détecté,
+les broches I2S, le format du morceau, les erreurs et la connexion Wi-Fi.
+La durée maximale des lectures SD est affichée en fin de lecture ; ce chiffre
+ne prouve pas, à lui seul, qu'une coupure audio a eu lieu.
+
+Pour isoler un grésillement :
+
+1. Essayer `WIFI_FAST 0`, un volume Web de 25 à 35 et la sortie **EARPHONES**.
+   Le volume mémorisé depuis le Web prime sur `AUDIO_VOLUME`.
+2. Compiler avec `AUDIO_DIAGNOSTIC 1` : au démarrage, Disco produit une sinusoïde
+   de 1 kHz pendant 5 secondes, puis 2 secondes de silence numérique.
+   Le signal est généré en mémoire, sans lire de WAV ni consommer l'urne,
+   même sans SD. Le volume est temporairement fixé à 35, sans toucher au volume
+   mémorisé. Le Wi-Fi ne démarre qu'après le test.
+3. Comparer l'écoute avec un casque filaire sur EARPHONES, puis avec les enceintes.
+   Si seul le branchement des enceintes produit du bruit, essayer une alimentation
+   séparée pour elles afin de vérifier une éventuelle perturbation par l'alimentation
+   ou la masse commune.
+4. Si le test interne est propre mais les WAV grésillent, vérifier les fichiers
+   sur ordinateur, puis essayer un WAV PCM16 à 44,1 kHz et une autre carte SD.
+   Si le test interne grésille aussi au casque, transmettre les traces complètes :
+   cela oriente vers la configuration codec/I2S ou le matériel, sans permettre
+   encore de conclure lequel est en cause.
+5. Remettre `AUDIO_DIAGNOSTIC 0` après les essais.
+
+Le tampon DMA dispose de 16 blocs de 256 trames et les lectures SD sont regroupées
+par blocs de 4 Kio pour mieux absorber les variations de latence. Cela ne garantit
+pas la disparition d'un bruit analogique ou d'un problème d'horloge.

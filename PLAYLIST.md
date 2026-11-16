@@ -6,6 +6,8 @@ Cette liste est une recommandation musicale, pas un fichier de playlist chargé 
 
 ## Sélection
 
+Les années sont des repères discographiques ; elles peuvent varier selon l'album, le single ou l'édition utilisée. Elles ne servent pas au fonctionnement du lecteur.
+
 | Artiste | Titre | Année |
 | :--- | :--- | :--- |
 | Alain Chamfort | Manureva | 1979 |
