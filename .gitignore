@@ -1,0 +1,24 @@
+# Private settings
+config.local.h
+
+# Local tests and validation reports
+/tests/
+/VALIDATION.md
+
+# Build outputs (may contain Wi-Fi credentials)
+build/
+build-*/
+*.bin
+*.elf
+*.map
+*.o
+*.a
+*.zip
+
+# Local tooling
+__pycache__/
+*.pyc
+.DS_Store
+
+# Audio
+audio/
