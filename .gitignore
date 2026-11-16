@@ -20,5 +20,6 @@ __pycache__/
 *.pyc
 .DS_Store
 
-# Audio
-audio/
+# Audios and local medias
+MP3/
+SD/
