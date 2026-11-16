@@ -5,7 +5,6 @@
 #include <unistd.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
-#include "driver/i2c.h"
 #include "player.h"
 #include <sys/stat.h>
 #include "freertos/FreeRTOS.h"
@@ -19,7 +18,7 @@
 #include "esp_netif.h"
 #include "esp_vfs_fat.h"
 #include "driver/sdmmc_host.h"
-#include "driver/i2s.h"
+#include "driver/i2s_std.h"
 #include "driver/gpio.h"
 #include "bootloader_random.h"
 #include "nvs_flash.h"
@@ -131,19 +130,29 @@ esp_err_t player_set_volume(int volume) {
 }
 static void play_file(const char *path,bool boot) {
     FILE *f=fopen(path,"rb"); wav_info w;
-    const char *error=NULL; bool installed=false,bus=false;
+    const char *error=NULL; bool enabled=false,bus=false;
+    i2s_chan_handle_t tx=NULL;
     codec_profile profile;
     if(!f || !wav_read(f,&w)) { error="WAV absent ou incompatible."; goto cleanup; }
     if(codec_detect(&profile)!=ESP_OK) { error="Codec non reconnu."; goto cleanup; }
     bus=true;
-    i2s_config_t i2s={.mode=I2S_MODE_MASTER|I2S_MODE_TX,.sample_rate=w.rate,
-        .bits_per_sample=I2S_BITS_PER_SAMPLE_16BIT,.channel_format=I2S_CHANNEL_FMT_RIGHT_LEFT,
-        .communication_format=I2S_COMM_FORMAT_STAND_I2S,.intr_alloc_flags=0,
-        .dma_buf_count=8,.dma_buf_len=256,.use_apll=true,.tx_desc_auto_clear=true,.fixed_mclk=w.rate*256};
-    if(i2s_driver_install(I2S_NUM_0,&i2s,0,NULL)!=ESP_OK) { error="Initialisation I2S impossible."; goto cleanup; }
-    installed=true;
-    i2s_pin_config_t pins={.mck_io_num=0,.bck_io_num=profile.bclk,.ws_io_num=profile.lrck,.data_out_num=profile.dout,.data_in_num=I2S_PIN_NO_CHANGE};
-    if(i2s_set_pin(I2S_NUM_0,&pins)!=ESP_OK) { error="Broches I2S invalides."; goto cleanup; }
+    i2s_chan_config_t channel=I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_0,I2S_ROLE_MASTER);
+    channel.dma_desc_num=8; channel.dma_frame_num=256;
+    channel.auto_clear=true; // Emit silence on underrun, never repeat old DMA audio.
+    if(i2s_new_channel(&channel,&tx,NULL)!=ESP_OK) { error="Allocation I2S impossible."; goto cleanup; }
+    i2s_std_config_t i2s={
+        .clk_cfg=I2S_STD_CLK_DEFAULT_CONFIG(w.rate),
+        .slot_cfg=I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT,I2S_SLOT_MODE_STEREO),
+        .gpio_cfg={.mclk=GPIO_NUM_0,.bclk=profile.bclk,.ws=profile.lrck,
+                   .dout=profile.dout,.din=I2S_GPIO_UNUSED}
+    };
+    i2s.clk_cfg.clk_src=I2S_CLK_SRC_APLL;
+    i2s.clk_cfg.mclk_multiple=I2S_MCLK_MULTIPLE_256;
+    i2s.slot_cfg.slot_mask=I2S_STD_SLOT_BOTH;
+    if(i2s_channel_init_std_mode(tx,&i2s)!=ESP_OK) { error="Configuration I2S impossible."; goto cleanup; }
+    // Start MCLK/BCLK before initializing the external codec, as in the 2.x version.
+    if(i2s_channel_enable(tx)!=ESP_OK) { error="Demarrage I2S impossible."; goto cleanup; }
+    enabled=true;
     int applied_volume=current_volume();
     if(codec_start(&profile,w.rate,applied_volume)!=ESP_OK) { error="Initialisation codec impossible."; goto cleanup; }
     int16_t input[512],stereo[1024]; uint32_t remaining=w.bytes,frames=0;
@@ -161,7 +170,7 @@ static void play_file(const char *path,bool boot) {
         size_t sent=0;
         while(sent<output_bytes) {
             size_t wrote=0;
-            if(i2s_write(I2S_NUM_0,(uint8_t*)stereo+sent,output_bytes-sent,&wrote,pdMS_TO_TICKS(1000))!=ESP_OK || !wrote) {
+            if(i2s_channel_write(tx,(uint8_t*)stereo+sent,output_bytes-sent,&wrote,1000)!=ESP_OK || !wrote) {
                 error="Erreur sortie I2S."; goto cleanup;
             }
             sent+=wrote;
@@ -174,15 +183,16 @@ static void play_file(const char *path,bool boot) {
     memset(stereo,0,sizeof(stereo));
     if(!stopped() && !error) for(int i=0;i<6;i++) {
         size_t wrote=0;
-        if(i2s_write(I2S_NUM_0,stereo,sizeof(stereo),&wrote,pdMS_TO_TICKS(1000))!=ESP_OK || wrote!=sizeof(stereo)) {
+        if(i2s_channel_write(tx,stereo,sizeof(stereo),&wrote,1000)!=ESP_OK || wrote!=sizeof(stereo)) {
             error="Erreur fin de lecture."; break;
         }
     }
 cleanup:
     if(f) fclose(f);
     if(bus) codec_mute(&profile);
-    if(installed) { i2s_stop(I2S_NUM_0); i2s_driver_uninstall(I2S_NUM_0); }
-    if(bus) i2c_driver_delete(I2C_NUM_0);
+    if(enabled) i2s_channel_disable(tx);
+    if(tx) i2s_del_channel(tx);
+    if(bus) codec_close();
     if(error) ESP_LOGE(TAG,"%s",error);
     finish(error);
     if(boot) start_wifi(); // Default: after sound; FAST fallback for short tracks/errors.

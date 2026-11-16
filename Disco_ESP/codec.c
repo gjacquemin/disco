@@ -6,7 +6,7 @@
 #include <stddef.h>
 #include "codec.h"
 #include "config.h"
-#include "driver/i2c.h"
+#include "driver/i2c_master.h"
 #include "driver/gpio.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -16,19 +16,35 @@ static const codec_profile profiles[]={
  {2,33,32,27,25,26,0x10,"ES8388 / variante 5"},
  {2,18,23,5,25,26,0x10,"ES8388 / variante 7"}
 };
+static i2c_master_bus_handle_t bus;
+static i2c_master_dev_handle_t device;
+static uint8_t device_address;
+void codec_close(void) {
+ if(device) { i2c_master_bus_rm_device(device); device=NULL; }
+ if(bus) { i2c_del_master_bus(bus); bus=NULL; }
+}
 static esp_err_t bus_open(const codec_profile *p) {
- i2c_config_t c={.mode=I2C_MODE_MASTER,.sda_io_num=p->sda,.scl_io_num=p->scl,
- .sda_pullup_en=GPIO_PULLUP_ENABLE,.scl_pullup_en=GPIO_PULLUP_ENABLE,.master.clk_speed=100000};
- esp_err_t e=i2c_param_config(I2C_NUM_0,&c);
- return e==ESP_OK?i2c_driver_install(I2C_NUM_0,I2C_MODE_MASTER,0,0,0):e;
+ i2c_master_bus_config_t c={.i2c_port=I2C_NUM_0,.sda_io_num=p->sda,.scl_io_num=p->scl,
+     .clk_source=I2C_CLK_SRC_DEFAULT,.glitch_ignore_cnt=7,.flags.enable_internal_pullup=true};
+ return i2c_new_master_bus(&c,&bus);
+}
+static esp_err_t select_device(const codec_profile *p) {
+ if(device && device_address==p->addr) return ESP_OK;
+ if(device) { esp_err_t e=i2c_master_bus_rm_device(device); if(e!=ESP_OK) return e; device=NULL; }
+ i2c_device_config_t c={.dev_addr_length=I2C_ADDR_BIT_LEN_7,.device_address=p->addr,.scl_speed_hz=100000};
+ esp_err_t e=i2c_master_bus_add_device(bus,&c,&device);
+ if(e==ESP_OK) device_address=p->addr;
+ return e;
 }
 static esp_err_t readreg(const codec_profile *p,uint8_t reg,uint8_t *data,size_t n) {
- return i2c_master_write_read_device(I2C_NUM_0,p->addr,&reg,1,data,n,pdMS_TO_TICKS(50));
+ esp_err_t e=select_device(p); if(e!=ESP_OK) return e;
+ return i2c_master_transmit_receive(device,&reg,1,data,n,50);
 }
 static esp_err_t writeval(const codec_profile *p,uint8_t reg,uint16_t val) {
+ esp_err_t e=select_device(p); if(e!=ESP_OK) return e;
  uint8_t b[3]={reg,0,0}; size_t n;
  if(p->kind==1) { b[1]=val>>8; b[2]=val; n=3; } else { b[1]=val; n=2; }
- return i2c_master_write_to_device(I2C_NUM_0,p->addr,b,n,pdMS_TO_TICKS(100));
+ return i2c_master_transmit(device,b,n,100);
 }
 #define W(r,v) do { esp_err_t err=writeval(p,r,v); if(err!=ESP_OK) return err; } while(0)
 esp_err_t codec_detect(codec_profile *out) {
@@ -45,7 +61,7 @@ esp_err_t codec_detect(codec_profile *out) {
    bool match=e==ESP_OK && (candidate.kind==2 || (b[0]==1 && b[1]==1));
    if(match) { *out=candidate; hits++; }
   }
-  i2c_driver_delete(I2C_NUM_0);
+  codec_close();
   gpio_reset_pin(candidate.sda); gpio_reset_pin(candidate.scl);
  }
  if(hits!=1) { ESP_LOGE("CODEC","Detection impossible ou ambigue : %u candidats. Aucun codec initialise.",hits); return ESP_ERR_NOT_FOUND; }

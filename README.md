@@ -11,33 +11,15 @@ Lecteur pour **ESP32-A1S Audio Kit V2.2**, développé pour **Arduino IDE**. À 
 - Interface Web sans Internet ni dépendance à un CDN : envoi, suppression, renommage, écoute manuelle, arrêt, volume mémorisé.
 - WAV mono dupliqués sur les deux sorties ; WAV stéréo avec canaux gauche et droit conservés sur le jack EARPHONES.
 
-## Matériel et branchements
+## Documentation
 
-- ESP32-A1S Audio Kit V2.2. Ce firmware vise cette carte, pas une LyraT-Mini.
-- microSD FAT32, de préférence 8 à 32 Go.
-- Alimentation 5 V / 2 A sur le port POWER ou UART/POWER selon la carte.
-- Enceintes amplifiées branchées sur **EARPHONES**. LINEIN est une entrée ; LOUT/ROUT ne sont pas la sortie mini-jack.
-- Pour programmer : port **UART/POWER** et câble micro-USB de données.
-
-Ne pas brancher de batterie si la mise sous tension secteur doit déclencher la lecture. L'USB d'un ordinateur peut également maintenir la carte allumée.
-
-### Interrupteurs DIP
-
-Pour la carte portant les liaisons suivantes, lire le repère ON imprimé sur le boîtier :
-
-| Interrupteur | Liaison | Position |
-|---|---|---|
-| 1 | IO13 / KEY2 | OFF |
-| 2 | IO13 / DATA3 | ON |
-| 3 | IO15 / CMD | ON |
-| 4 | IO13 / MTCK | OFF |
-| 5 | IO15 / MTDO | OFF |
-
-La SD utilise le mode 1 bit : CLK14, CMD15, D0=2. Aucun pilotage d'alimentation sur GPIO13. Si la sérigraphie diffère, vérifier le schéma de la révision avant de reprendre ces positions.
+- [HARDWARE.md](HARDWARE.md) : matériel, câblage, alimentation, interrupteurs DIP et profils de codec.
+- [PLAYLIST.md](PLAYLIST.md) : sélection musicale recommandée et préparation des extraits.
+- [Process_WAV_for_SD_macOS.command](Process_WAV_for_SD_macOS.command) : conversion et copie des WAV depuis macOS.
 
 ## Préparer la carte SD
 
-1. Formater en **FAT32**, une partition principale ; MBR recommandé. Pas d'exFAT et aucun formatage automatique par le programme.
+1. Formater en **FAT32**, une partition principale ; MBR recommandé. Pas d'exFAT et aucun formatage automatique par le programme. Une carte de 64 Go est utilisable si elle est bien formatée en FAT32 ; sauvegarder son contenu avant tout formatage.
 2. Copier les fichiers WAV **directement à la racine** de la carte, sans dossier.
 3. Insérer la carte avant d'allumer le lecteur. Pas de remplacement à chaud.
 
@@ -49,39 +31,54 @@ Noms courts conseillés ; espaces et accents acceptés. Éviter les noms commen�
 
 Conversion avec FFmpeg :
 ```sh
-ffmpeg -i entree.wav -ar 48000 -c:a pcm_s16le sortie.wav
+ffmpeg -i entree.wav -ar 44100 -c:a pcm_s16le sortie.wav
 ```
 
 Cette conversion conserve les canaux de la source. Ajouter `-ac 1` pour forcer le mono ou `-ac 2` pour forcer la stéréo. Mono et stéréo peuvent cohabiter sur la carte, sans réglage supplémentaire.
+
+### Préparation avec le script macOS
+
+Le script [Process_WAV_for_SD_macOS.command](Process_WAV_for_SD_macOS.command) fonctionne sous **macOS uniquement**, avec `ffmpeg` et `ffprobe` installés. Par exemple, si Homebrew est déjà installé : `brew install ffmpeg`.
+
+1. Placer le script à côté des WAV source, déjà découpés si nécessaire.
+2. Au besoin, le rendre exécutable : `chmod +x Process_WAV_for_SD_macOS.command`.
+3. Le lancer depuis le Terminal avec `./Process_WAV_for_SD_macOS.command` ou par double-clic.
+4. Les conversions sont écrites dans **SD/** en WAV PCM16 **44,1 kHz stéréo**, et dans **MP3/** en MP3 128 kbit/s pour l'écoute sur ordinateur. Les originaux sont conservés. Les WAV dépassant 128 Mio après conversion sont ignorés. Disco ne lit pas les MP3.
+5. Choisir explicitement le volume cible et confirmer son nom. Le script vérifie qu'il s'agit d'un volume externe ou amovible, inscriptible et en FAT32, puis copie les WAV **à sa racine**, sans écraser les fichiers existants.
+6. Le script synchronise les écritures et tente de démonter le volume après copie. Ne retirer la carte qu'après confirmation du démontage ou éjection manuelle réussie.
+
+Le script ne formate aucun disque. Les dossiers locaux SD/ et MP3/ ne sont pas à copier en tant que dossiers sur la carte. Les fichiers convertis portant déjà le même nom sont ignorés ; renommer les fichiers concernés pour retraiter une nouvelle version. Les noms qui deviennent identiques après nettoyage sont signalés et ignorés. Aucun nettoyage général des fichiers cachés du dossier de travail n'est effectué.
 
 ## Installer et configurer Arduino IDE
 
 1. Installer Arduino IDE 2.x.
 2. Ajouter cette URL dans Préférences → URL de gestionnaire de cartes supplémentaires :
    https://espressif.github.io/arduino-esp32/package_esp32_index.json
-3. Dans le gestionnaire de cartes, installer **esp32 par Espressif Systems, version 2.0.17 exactement**. Les versions 3.x ne conviennent pas au pilote I2S utilisé ici.
+3. Dans le gestionnaire de cartes, installer **esp32 par Espressif Systems, version 3.3.12**, référence de cette variante. Ne pas utiliser 2.x avec ces sources. Les autres versions 3.x ne sont pas toutes validées ; les premières 3.0.x ne disposent pas du pilote I²C utilisé ici.
 4. Copier `Disco_ESP/config.example.h` en `Disco_ESP/config.local.h` s'il n'existe pas déjà.
 5. Ouvrir `Disco_ESP/Disco_ESP.ino`, avec tous ses fichiers voisins. Aucune bibliothèque supplémentaire à installer.
 6. Renseigner les réglages dans **config.local.h**.
 
 ### Tous les réglages de l'IDE
 
+Sélectionner la carte **ESP32 Arduino → ESP32 Dev Module** et son port série. Régler ensuite les options dans l'ordre du menu :
+
 | Option | Valeur |
 |---|---|
-| Carte | ESP32 Arduino → **ESP32 Dev Module** |
-| Upload Speed | **115200** |
 | CPU Frequency | **240 MHz (WiFi/BT)** |
+| Core Debug Level | **Info** |
+| Erase All Flash Before Sketch Upload | **Disabled** |
+| Events Run On | **Core 1** |
 | Flash Frequency | **40 MHz** |
 | Flash Mode | **DIO** |
 | Flash Size | **4MB (32Mb)** |
-| Partition Scheme | **Huge APP (3MB No OTA/1MB SPIFFS)** |
-| Core Debug Level | **Info** |
-| PSRAM | **Disabled** |
+| JTAG Adapter | **Disabled** |
 | Arduino Runs On | **Core 1** |
-| Events Run On | **Core 1** |
-| Erase All Flash Before Sketch Upload | **Disabled** |
-| Port | Port série de la carte |
-| Moniteur série | **115200 bauds** |
+| Partition Scheme | **Huge APP (3MB No OTA/1MB SPIFFS)** |
+| PSRAM | **Disabled** |
+| Upload Speed | **115200** |
+
+Régler le **moniteur série à 115200 bauds**.
 
 Laisser les options absentes de l'IDE à leur valeur par défaut. Si le téléversement ne démarre pas : maintenir BOOT, appuyer brièvement sur RST, relâcher BOOT quand le transfert commence.
 
@@ -102,7 +99,7 @@ Un seul fichier personnel à modifier : **Disco_ESP/config.local.h**. `config.h`
 | `PLAYBACK_MODE` | `PLAYBACK_URN` | Urne ; choisir `PLAYBACK_RANDOM` pour le tirage indépendant |
 | `AVOID_LAST_TRACK` | `1` | Exclure le dernier titre, seulement en mode aléatoire |
 | `WEB_MAX_FILE_BYTES` | `128U * 1024U * 1024U` | Taille maximale d'un envoi Web |
-| `CODEC_PROFILE` | `0` | Détection automatique ; voir les profils ci-dessous |
+| `CODEC_PROFILE` | `0` | Détection automatique ; voir [HARDWARE.md](HARDWARE.md#profils-audio) |
 
 Recompiler après modification. Le volume réglé depuis le Web est prioritaire sur `AUDIO_VOLUME`, y compris après une mise à jour du firmware sans effacement de flash.
 
@@ -166,18 +163,6 @@ En cas d'échec de sauvegarde du tirage, aucune lecture automatique n'est lancé
 
 La SD est lue pendant la lecture. Les modifications de fichiers sont réservées aux périodes d'arrêt. **Attendre la confirmation des opérations Web avant de couper l'alimentation** : FAT32 n'est pas journalisé. Les envois utilisent un fichier temporaire `.upload.part`, ignoré par le lecteur et nettoyé au démarrage ; cela ne garantit pas l'intégrité de la SD lors d'une coupure pendant une écriture. NVS gère l'usure de la flash mais ne remplace pas une alimentation stable.
 
-## Profils audio
-
-| Profil | Codec | SDA / SCL | BCLK / LRCK / sortie | MCLK |
-|---|---|---|---|---|
-| 1 | AC101, adresse 0x1A | 33 / 32 | 27 / 26 / 25 | 0 |
-| 2 | ES8388 variante 5, adresse 0x10 ou 0x11 | 33 / 32 | 27 / 25 / 26 | 0 |
-| 3 | ES8388 variante 7, adresse 0x10 ou 0x11 | 18 / 23 | 5 / 25 / 26 | 0 |
-
-`CODEC_PROFILE=0` essaie ces profils. Un seul candidat doit répondre. AC101 est vérifié par sa signature ; ES8388 par une lecture à l'adresse attendue, sans identifiant unique. Il ne s'agit pas d'une reconnaissance universelle des cartes. Aucun autre périphérique I2C ne doit être ajouté sur ces broches.
-
-En cas de détection impossible ou ambiguë, consulter le moniteur série. Fixer `CODEC_PROFILE` à 1, 2 ou 3 uniquement lorsque la révision est connue. Après une erreur de lecture, l'état du lecteur apparaît aussi sur la page.
-
 ## Organisation et publication
 
 | Chemin | Contenu |
@@ -187,6 +172,8 @@ En cas de détection impossible ou ambiguë, consulter le moniteur série. Fixer
 | `Disco_ESP/config.local.h` | Réglages personnels, ignorés par Git |
 | `Disco_ESP/data/index.html` | Source de l'interface Web |
 | `Disco_ESP/page.cpp` | Page embarquée, générée et versionnée |
+| `HARDWARE.md`, `PLAYLIST.md` | Montage et sélection musicale |
+| `Process_WAV_for_SD_macOS.command` | Préparation des fichiers sur macOS |
 | `tools/embed_web.py` | Régénération de la page avec Python 3 |
 | `LICENSE`, `LICENSES/`, `THIRD_PARTY.md` | Licence et notices des dépendances |
 
@@ -211,7 +198,7 @@ Un fichier ignoré déjà publié demeure dans l'historique. Si des identifiants
 
 ## Vérification sur matériel
 
-Le projet doit être validé sur la révision de carte utilisée : sortie jack, mode fast, volume pendant la lecture et coupures d'alimentation. Vérifier notamment :
+Cette variante migrée doit être validée sur la révision de carte utilisée : sortie jack, mode fast, volume pendant la lecture et coupures d'alimentation. Vérifier notamment :
 
 1. Trois WAV mono et stéréo à la racine : un seul morceau au démarrage, puis silence.
 2. Avec un WAV de test gauche/droite, vérifier la séparation des canaux sur les enceintes. Coupure pendant un morceau : démarrage suivant depuis le début du prochain titre de l'urne.

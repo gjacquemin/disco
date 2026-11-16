@@ -122,7 +122,6 @@ for fichier in *.wav; do
                 rm -f "$fichier"
                 echo "  -> Fichier original '$fichier' supprimé (commande 'trash' introuvable)."
             fi
-            echo "  -> Fichier original '$fichier' supprimé."
         else
             echo "ERREUR : Échec de la conversion MP3 pour '$fichier_sd'. L'original n'a pas été supprimé." >&2
         fi

@@ -1,8 +1,12 @@
-// ESP32 by Espressif Systems 2.0.17, ESP32 Dev Module.
+// ESP32 by Espressif Systems 3.3.12, ESP32 Dev Module.
 #include <Arduino.h>
 #include <esp_arduino_version.h>
-#if ESP_ARDUINO_VERSION_MAJOR != 2 || ESP_ARDUINO_VERSION_MINOR != 0 || ESP_ARDUINO_VERSION_PATCH != 17
-#error "Installer esp32 by Espressif Systems version 2.0.17 dans le gestionnaire de cartes."
+#include <esp_idf_version.h>
+#if ESP_ARDUINO_VERSION_MAJOR != 3
+#error "Cette version de Disco utilise Arduino-ESP32 3.x ; reference de compilation : 3.3.12."
+#endif
+#if ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(5, 2, 0)
+#error "Pilote I2C moderne requis : utiliser Arduino-ESP32 3.3.12 pour cette variante."
 #endif
 extern "C" void player_run(void);
 static void playerTask(void *) {
