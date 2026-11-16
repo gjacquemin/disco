@@ -2,11 +2,7 @@
 
 Sélection proposée pour Disco, avec une intention : faire commencer chaque extrait à un moment fort — refrain, montée ou percussion marquante. Le point de départ doit être préparé dans le fichier audio : ni le lecteur ni le script de conversion ne détectent ou ne découpent automatiquement ces passages.
 
-Cette liste est une recommandation musicale, pas un fichier de playlist chargé par le firmware. Disco choisit parmi les WAV présents à la racine de la SD selon le mode urne ou aléatoire ; l'ordre du tableau n'impose pas l'ordre de lecture. Les fichiers audio ne sont pas inclus.
-
 ## Sélection
-
-Les années sont des repères discographiques ; elles peuvent varier selon l'album, le single ou l'édition utilisée. Elles ne servent pas au fonctionnement du lecteur.
 
 | Artiste | Titre | Année |
 | :--- | :--- | :--- |

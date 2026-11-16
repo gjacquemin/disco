@@ -10,8 +10,11 @@ Ce guide décrit le montage retenu pour Disco avec une carte **ESP32-A1S Audio K
 | Stockage | microSD SanDisk 64 Go | Stocke les fichiers audio ; vérifier le format de la carte avant usage. | [Référence Amazon](https://www.amazon.fr/dp/B0B7NXBM6P) |
 | Enceintes | Creative Pebble 2.0 | Enceintes amplifiées avec entrée audio mini-jack et alimentation USB. | [Référence Amazon](https://www.amazon.fr/dp/B0791J2658) |
 | Alimentation | Chargeur secteur double USB Nisiyama | Alimente séparément la carte et les enceintes via ses deux ports. | [Référence Amazon](https://www.amazon.fr/dp/B0BXD4XRM2) |
+| Boule à facettes | Eurolite Mirror Ball 30 cm gold | Boule à facettes | [Référence Thomann](https://www.thomann.fr/eurolite_mirror_ball_30_cm_gold.htm) |
+| Moteur | Eurolite MD-1030 Mirror Ball Motor 3kg | Moteur rotatif avec fiche d'alimentation | [Référence Thomann](https://www.thomann.fr/eurolite_md_1030_mirror_ball_motor_3kg.htm) |
+| Lumière | Eurolite LED PST-5 QCL Spot WH | Projecteur LED | [Référence Thomann](https://www.thomann.fr/eurolite_led_pst_5_qcl_spot_wh.htm) |
 
-Les liens identifient les références choisies ; vérifier les caractéristiques et la révision effectivement livrées. Prévoir **5 V / 2 A disponibles pour la carte**, plus le courant demandé par les enceintes. Le courant total et sa répartition entre les deux ports se vérifient sur l'étiquette du chargeur : deux prises USB ne garantissent pas deux sorties indépendantes de 2 A.
+Les liens identifient les références choisies ; vérifier les caractéristiques et la révision effectivement livrées. Prévoir **5 V / 2 A disponibles pour la carte**, plus le courant demandé par les enceintes.
 
 ## Branchements
 
@@ -32,8 +35,6 @@ flowchart LR
 Pour programmer la carte, utiliser **UART/POWER** avec un câble micro-USB de données. Le port POWER seul ne programme pas la carte.
 
 Un chargeur commun simplifie l'installation, mais ne garantit ni l'absence de bruit ni un courant suffisant. Un ronflement peut dépendre de l'alimentation, des câbles et des masses du montage. Une alimentation insuffisante peut provoquer des redémarrages, notamment avec le Wi-Fi actif.
-
-Pour déclencher Disco en allumant le secteur, ne pas connecter de batterie. Un ordinateur relié en USB peut maintenir la carte sous tension et empêcher un véritable redémarrage lors de la coupure du chargeur.
 
 ### Interrupteurs DIP
 

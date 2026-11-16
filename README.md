@@ -7,7 +7,7 @@ Lecteur pour **ESP32-A1S Audio Kit V2.2**, développé pour **Arduino IDE**. À 
 - Lecture dès le démarrage, sans attendre le réseau.
 - Deux modes sélectionnables depuis le Web et mémorisés : Urne persistante ou Random.
 - Aucune reprise après coupure : chaque morceau commence au début.
-- **Wi-Fi fast activé par défaut** : connexion dès que la lecture a commencé.
+- **Wi-Fi fast activé par défaut** : connexion Wi-Fi dès que la lecture a commencé.
 - Interface Web sans Internet ni dépendance à un CDN : envoi, suppression, renommage, écoute manuelle, arrêt, volume mémorisé.
 - WAV mono dupliqués sur les deux sorties ; WAV stéréo avec canaux gauche et droit conservés sur le jack EARPHONES.
 
