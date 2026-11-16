@@ -7,11 +7,11 @@
 #define WIFI_PASSWORD "TON_MOT_DE_PASSE"
 #define WIFI_TIMEOUT_MS 15000
 // 0 : Wi-Fi apres le morceau ; 1 : Wi-Fi des le debut effectif de lecture.
-#define WIFI_FAST 0
+#define WIFI_FAST 1
 // Volume initial : 0 a 100. Le volume memorise depuis le Web est prioritaire.
 #define AUDIO_VOLUME 55
 #define AUDIO_DIRECTORY "/sdcard"
-// Mode de selection au demarrage.
+// Mode initial au demarrage ; le choix memorise depuis le Web est prioritaire.
 #define PLAYBACK_RANDOM 0
 #define PLAYBACK_URN 1
 #define PLAYBACK_MODE PLAYBACK_URN

@@ -5,9 +5,9 @@ Lecteur pour **ESP32-A1S Audio Kit V2.2**, développé pour **Arduino IDE**. À 
 ## Fonctionnalités
 
 - Lecture dès le démarrage, sans attendre le réseau.
-- Deux modes de sélection à la compilation : urne persistante ou tirage aléatoire indépendant.
+- Deux modes sélectionnables depuis le Web et mémorisés : Urne persistante ou Random.
 - Aucune reprise après coupure : chaque morceau commence au début.
-- Wi-Fi après le morceau par défaut ; option **fast** pour le lancer pendant la lecture.
+- **Wi-Fi fast activé par défaut** : connexion dès que la lecture a commencé.
 - Interface Web sans Internet ni dépendance à un CDN : envoi, suppression, renommage, écoute manuelle, arrêt, volume mémorisé.
 - WAV mono dupliqués sur les deux sorties ; WAV stéréo avec canaux gauche et droit conservés sur le jack EARPHONES.
 
@@ -54,10 +54,10 @@ Le script ne formate aucun disque. Les dossiers locaux SD/ et MP3/ ne sont pas �
 1. Installer Arduino IDE 2.x.
 2. Ajouter cette URL dans Préférences → URL de gestionnaire de cartes supplémentaires :
    https://espressif.github.io/arduino-esp32/package_esp32_index.json
-3. Dans le gestionnaire de cartes, installer **esp32 par Espressif Systems, version 2.0.17 exactement**. Les versions 3.x ne conviennent pas au pilote I2S utilisé ici.
+3. Dans le gestionnaire de cartes, installer **esp32 par Espressif Systems, version 2.0.17 exactement**. Cette version 2.0.17 est la référence retenue après essais sans grésillement sur la carte cible. La migration 3.x est reportée ; ne pas compiler ce projet avec un cœur 3.x.
 4. Copier `Disco_ESP/config.example.h` en `Disco_ESP/config.local.h` s'il n'existe pas déjà.
 5. Ouvrir `Disco_ESP/Disco_ESP.ino`, avec tous ses fichiers voisins. Aucune bibliothèque supplémentaire à installer.
-6. Renseigner les réglages dans **config.local.h**.
+6. Renseigner les réglages dans **config.local.h**. Pour une mise à jour, conserver les identifiants existants et vérifier `WIFI_FAST 1` : un ancien fichier personnel avec la valeur 0 ne sera pas modifié automatiquement.
 
 ### Tous les réglages de l'IDE
 
@@ -93,22 +93,22 @@ Un seul fichier personnel à modifier : **Disco_ESP/config.local.h**. `config.h`
 | `WIFI_SSID` | `"TON_SSID"` | Nom du réseau ; vide ou valeur initiale = Wi-Fi désactivé |
 | `WIFI_PASSWORD` | `"TON_MOT_DE_PASSE"` | Mot de passe Wi-Fi |
 | `WIFI_TIMEOUT_MS` | `15000` | Durée maximale de tentative de connexion |
-| `WIFI_FAST` | `0` | `0` après le son ; `1` pendant le son, une fois la lecture commencée |
+| `WIFI_FAST` | `1` | `0` après le son ; `1` pendant le son, une fois la lecture commencée |
 | `AUDIO_VOLUME` | `55` | Volume initial de 0 à 100, utilisé en l'absence de valeur mémorisée |
 | `AUDIO_DIRECTORY` | `"/sdcard"` | Point de montage de la racine de la SD, à conserver pour cet usage |
-| `PLAYBACK_MODE` | `PLAYBACK_URN` | Urne ; choisir `PLAYBACK_RANDOM` pour le tirage indépendant |
+| `PLAYBACK_MODE` | `PLAYBACK_URN` | Mode initial ; le choix Random/Urne mémorisé depuis le Web est prioritaire |
 | `AVOID_LAST_TRACK` | `1` | Exclure le dernier titre, seulement en mode aléatoire |
 | `WEB_MAX_FILE_BYTES` | `128U * 1024U * 1024U` | Taille maximale d'un envoi Web |
 | `CODEC_PROFILE` | `0` | Détection automatique ; voir [HARDWARE.md](HARDWARE.md#profils-audio) |
 
-Recompiler après modification. Le volume réglé depuis le Web est prioritaire sur `AUDIO_VOLUME`, y compris après une mise à jour du firmware sans effacement de flash.
+Recompiler après modification. Le mode et le volume réglés depuis le Web sont prioritaires sur `PLAYBACK_MODE` et `AUDIO_VOLUME`, y compris après une mise à jour du firmware sans effacement de flash.
 
 ### Wi-Fi normal et fast
 
 ```c
-#define WIFI_FAST 0  // connexion seulement après la fin du morceau
+#define WIFI_FAST 1  // par défaut : connexion une fois le morceau en cours de lecture
 // ou
-#define WIFI_FAST 1  // connexion une fois le morceau en cours de lecture
+#define WIFI_FAST 0  // connexion seulement après la fin du morceau
 ```
 
 Le mode fast commence la connexion après avoir envoyé plus que la capacité des tampons DMA à I2S : le son a commencé à sortir. Un fichier très court peut se terminer avant ce seuil ; la connexion commence alors à sa fin. La page devient accessible après obtention d'une adresse IP, pas instantanément au premier échantillon.
@@ -125,13 +125,11 @@ Tous les WAV compatibles sont mélangés une fois. Chaque allumage retire le pre
 
 La page affiche les **prochains allumages dans l'ordre réel**, sans le titre déjà tiré. Consulter la page ne consomme rien. Chaque fichier apparaît une fois par cycle ; une répétition entre la fin d'un cycle et le début du suivant reste possible.
 
-Le bouton **Réinitialiser l'urne** remet tous les morceaux dans un nouveau mélange sans lancer de lecture. Un ajout, une suppression ou un renommage réussi fait automatiquement la même chose. Les changements hors ligne sont détectés au prochain démarrage par une empreinte du catalogue trié. Remplacer le contenu d'un WAV compatible sans changer son nom conserve sa place ; utiliser le bouton pour forcer un mélange.
+Le bouton **Régénérer la liste** remet tous les morceaux dans un nouveau mélange sans lancer de lecture. Un ajout, une suppression ou un renommage réussi fait automatiquement la même chose. Les changements hors ligne sont détectés au prochain démarrage par une empreinte du catalogue trié. Remplacer le contenu d'un WAV compatible sans changer son nom conserve sa place ; utiliser le bouton pour forcer un mélange.
 
-### Aléatoire indépendant
+### Random — aléatoire indépendant
 
-```c
-#define PLAYBACK_MODE PLAYBACK_RANDOM
-```
+Choisir **Random** dans la section **Mode de fonctionnement**. Le choix est enregistré pour les prochains démarrages, sans interrompre le morceau actuel. `PLAYBACK_MODE` ne fournit que la valeur initiale lorsqu’aucun mode n’a encore été mémorisé.
 
 Un nouveau choix est effectué à chaque démarrage. Avec `AVOID_LAST_TRACK=1`, le dernier titre est exclu s'il existe au moins deux WAV. Ce mode ne possède pas d'ordre futur affichable. Un passage ultérieur au mode urne retrouve l'état conservé si le catalogue est inchangé.
 
@@ -141,17 +139,25 @@ Le mélange et les tirages utilisent le générateur matériel avec sa source d'
 
 Ouvrir **http://ADRESSE_IP/** depuis un appareil du même réseau. L'IP est affichée dans le moniteur série et dans la liste DHCP du routeur.
 
-- **Carte SD · racine** : liste, envoi multiple, suppression et renommage sans écraser un fichier existant.
-- **Prochains allumages** : ordre restant dans l'urne et remise à zéro.
-- **Écouter** : joue le titre choisi **sur les enceintes raccordées au jack**, depuis le début, une seule fois. Le navigateur ne reçoit pas de flux audio.
-- **Arrêter la lecture** : interrompt le morceau de démarrage ou une écoute manuelle. Attendre l'état « À l'arrêt » avant d'en lancer une autre.
-- **Volume** : déplacer le curseur, puis cliquer **Appliquer et mémoriser**. La valeur s'applique à la lecture en cours et aux suivantes, et reste mémorisée après extinction. À 0, le signal audio envoyé est silencieux.
+### Lecture
 
-Les écoutes manuelles **ne consomment pas l'urne et ne changent pas la mémoire du dernier tirage aléatoire**. Elles ne démarrent pas une nouvelle séquence automatique.
+La liste déroulante contient tous les WAV et sélectionne le morceau en cours. Choisir un autre titre arrête le précédent, attend la libération du codec puis lance le nouveau depuis le début. **STOP** arrête la lecture ; le sélecteur revient sur « Choisir un morceau… », ce qui permet aussi de relancer le même titre.
 
-Pendant une lecture, les envois, suppressions, renommages et remises à zéro de l'urne sont désactivés et refusés par le serveur. Le volume et l'arrêt restent disponibles. Une seule lecture à la fois ; aucune file de titres utilisateur.
+La barre de progression et les durées écoulée/totale sont actualisées environ toutes les 750 ms. La position est une estimation calculée à partir des trames transmises, en tenant compte de la capacité DMA (écart possible d’environ un tampon audio). La barre n’est pas un contrôle de déplacement dans le morceau.
 
-Le volume est écrit en mémoire interne une fois par validation, pas à chaque mouvement du curseur. La sauvegarde flash et l'activité réseau peuvent occasionner une perturbation audible sur certaines cartes ; vérifier ce comportement avec le matériel utilisé. Si la sauvegarde échoue, la page l'indique et le nouveau volume n'est pas accepté.
+Le slider de volume affiche la valeur pendant le déplacement et l’applique et la mémorise au relâchement, sans bouton de validation. Aucun enregistrement n’a lieu à chaque mouvement ; une valeur inchangée n’est pas réécrite. Les erreurs de sauvegarde sont affichées. Le volume demeure mémorisé après extinction.
+
+### Mode de fonctionnement
+
+Choisir **Random** ou **Urne**. Le mode est mémorisé pour les prochains allumages, sans consommer de morceau ni changer la lecture actuelle. En mode Urne, la liste compacte affiche les titres à venir dans leur ordre. **Régénérer la liste** remet tous les titres dans un nouveau mélange, sans lancer de son. Un changement de mode conserve l’urne existante ; les modifications de fichiers la reconstruisent, quel que soit le mode actif.
+
+### Fichiers
+
+Déposer un ou plusieurs WAV dans la zone dédiée, ou utiliser le sélecteur de fichiers, puis cliquer **Téléverser**. La liste compacte indique chaque nom, sa taille en Mio et les actions **Renommer** et **Supprimer**. Les fichiers restent à la racine de la carte. Un fichier existant n’est pas écrasé.
+
+Pendant une lecture, les téléversements, suppressions, renommages et régénérations d’urne sont bloqués côté interface et côté serveur. Appuyer sur STOP pour les effectuer. Le changement de titre, le volume et le mode restent accessibles. Les commandes Web sont traitées successivement.
+
+Les écoutes manuelles **ne consomment pas l’urne et ne changent pas le dernier tirage Random**. Le son sort sur le jack de la carte, pas dans le navigateur. La lecture ne s’enchaîne pas automatiquement.
 
 Serveur HTTP local sans mot de passe : les appareils du même réseau peuvent gérer le lecteur. Ne pas exposer le port 80 sur Internet. Des noms très longs ou fortement encodés peuvent dépasser la limite des en-têtes HTTP ; les raccourcir en cas d'erreur 431.
 
@@ -207,7 +213,7 @@ Le projet doit être validé sur la révision de carte utilisée : sortie jack, 
 5. Volume modifié et mémorisé : même niveau après remise sous tension.
 6. Modification de fichiers refusée pendant une lecture, autorisée après arrêt.
 
-Aucun essai sur carte physique n'a été effectué pour cette version. Les compilations et contrôles logiciels ne remplacent pas ces vérifications.
+La lecture audio et le Wi-Fi fast de la base Arduino 2.0.17 ont été confirmés par l’utilisateur sur sa carte. Les nouvelles commandes Web doivent encore être vérifiées sur matériel ; les tests logiciels ne remplacent pas ces essais.
 
 ## Licence
 

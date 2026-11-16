@@ -109,16 +109,20 @@ void player_stop(void) {
 }
 static void finish(const char *error) {
     portENTER_CRITICAL(&player_lock);
-    status.playing=false; status.path[0]=0; stop_requested=false;
+    status.playing=false; stop_requested=false;
     snprintf(status.error,sizeof(status.error),"%s",error?error:"");
     portEXIT_CRITICAL(&player_lock);
 }
 esp_err_t player_request(const char *path) {
     if(!play_queue || strlen(path)>=sizeof(((play_command*)0)->path)) return ESP_ERR_INVALID_STATE;
+    // HTTP commands are serialized. Wait for codec/I2S cleanup before replacing.
+    player_stop();
+    for(unsigned i=0;player_busy() && i<300;i++) vTaskDelay(pdMS_TO_TICKS(10));
+    if(player_busy()) return ESP_ERR_TIMEOUT;
     play_command cmd; strcpy(cmd.path,path);
     portENTER_CRITICAL(&player_lock);
     if(status.playing) { portEXIT_CRITICAL(&player_lock); return ESP_ERR_INVALID_STATE; }
-    status.playing=true; status.error[0]=0; stop_requested=false; strcpy(status.path,path);
+    status.playing=true; status.elapsed_ms=0; status.duration_ms=0; status.error[0]=0; stop_requested=false; strcpy(status.path,path);
     portEXIT_CRITICAL(&player_lock);
     if(xQueueSend(play_queue,&cmd,0)!=pdTRUE) { finish("File de lecture indisponible."); return ESP_FAIL; }
     return ESP_OK;
@@ -144,6 +148,10 @@ static void play_file(const char *path,bool boot) {
     codec_profile profile;
     if(diagnostic) { w.rate=44100; w.channels=1; w.bytes=7U*44100U*2U; }
     else if(!f || !wav_read(f,&w)) { error="WAV absent ou incompatible."; goto cleanup; }
+    portENTER_CRITICAL(&player_lock);
+    status.duration_ms=(uint32_t)((uint64_t)w.bytes*1000/(w.rate*w.channels*2));
+    status.elapsed_ms=0;
+    portEXIT_CRITICAL(&player_lock);
     DISCO_LOGI(TAG,"Lecture %s : %lu Hz, PCM16, %u canal(aux), volume=%d, WIFI_FAST=%d",
                diagnostic?"TEST 1 kHz 5 s + silence 2 s":path,(unsigned long)w.rate,w.channels,
                diagnostic?35:current_volume(),WIFI_FAST);
@@ -190,6 +198,11 @@ static void play_file(const char *path,bool boot) {
             sent+=wrote;
         }
         frames+=block_frames; remaining-=got;
+        // Subtract the maximum queued DMA frames: conservative audible position.
+        uint32_t audible=frames>AUDIO_DMA_COUNT*AUDIO_DMA_FRAMES?frames-AUDIO_DMA_COUNT*AUDIO_DMA_FRAMES:0;
+        portENTER_CRITICAL(&player_lock);
+        status.elapsed_ms=(uint32_t)((uint64_t)audible*1000/w.rate);
+        portEXIT_CRITICAL(&player_lock);
         // More than the complete DMA capacity has been queued: playback has started.
         // Do not enable SAR entropy here; selection finished before audio/Wi-Fi.
         if(boot && !diagnostic && WIFI_FAST && frames>AUDIO_DMA_COUNT*AUDIO_DMA_FRAMES) start_wifi();
@@ -200,6 +213,9 @@ static void play_file(const char *path,bool boot) {
         if(i2s_write(I2S_NUM_0,stereo,sizeof(stereo),&wrote,pdMS_TO_TICKS(1000))!=ESP_OK || wrote!=sizeof(stereo)) {
             error="Erreur fin de lecture."; break;
         }
+    }
+    if(!stopped() && !error) {
+        portENTER_CRITICAL(&player_lock); status.elapsed_ms=status.duration_ms; portEXIT_CRITICAL(&player_lock);
     }
 cleanup:
     if(f) fclose(f);
@@ -221,9 +237,10 @@ void player_run(void) {
         if(nvs_get_u8(nvs,"volume",&v)==ESP_OK && v<=100) status.volume=v;
         nvs_close(nvs);
     }
+    selection_init();
     play_queue=xQueueCreate(1,sizeof(play_command));
     if(!play_queue) { finish("Memoire insuffisante."); start_wifi(); return; }
-    DISCO_LOGI(TAG,"Volume memorise/initial=%d ; selection=%s",current_volume(),PLAYBACK_MODE==PLAYBACK_URN?"urne":"aleatoire");
+    DISCO_LOGI(TAG,"Volume memorise/initial=%d ; mode de selection charge depuis les reglages",current_volume());
     bool mounted=mount_sd();
     if(mounted) unlink(AUDIO_DIRECTORY "/.upload.part"); // Cleanup BEFORE all audio/HTTP.
     char chosen[512];

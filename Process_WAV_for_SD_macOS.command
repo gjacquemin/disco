@@ -1,154 +1,217 @@
 #!/bin/bash
-# Disco — préparation WAV et copie sur microSD, macOS / Bash 3.2.
-# Originaux conservés. Aucun formatage ni nettoyage général des fichiers cachés.
-shopt -s nullglob nocaseglob
-export COPYFILE_DISABLE=1
-MAX_WAV_BYTES=$((128 * 1024 * 1024))
-TMP_WAV=""; TMP_MP3=""; TMP_COPY=""; INFO=""
-cleanup() {
-    local p
-    for p in "$TMP_WAV" "$TMP_MP3" "$TMP_COPY" "$INFO"; do
-        [ -z "$p" ] || rm -f -- "$p"
-    done
-}
-trap cleanup EXIT
-trap 'exit 130' INT TERM
-fail() { printf 'ERREUR : %s\n' "$*" >&2; exit 1; }
-pause_fin() { if [ -t 0 ]; then read -r -p "Appuyez sur Entrée pour quitter… " _ || true; fi; }
-[ "$(uname -s)" = "Darwin" ] || fail "Ce script fonctionne uniquement sous macOS."
-[ "$EUID" -ne 0 ] || fail "Lancez ce script sans sudo."
-for outil in ffmpeg ffprobe diskutil iconv; do
-    command -v "$outil" >/dev/null 2>&1 || fail "$outil est introuvable. Pour FFmpeg : brew install ffmpeg (si Homebrew est installé)."
-done
-[ -x /usr/libexec/PlistBuddy ] || fail "PlistBuddy est indisponible."
-cd "$(dirname "$0")" || fail "Impossible d'ouvrir le dossier du script."
-mkdir -p SD MP3 || fail "Impossible de créer SD/ et MP3/."
+cd "$(dirname "$0")"
 
-nettoyer_nom() {
-    local nom="$1" ascii="" maj
-    # iconv peut ne pas translittérer tous les caractères selon macOS.
-    ascii=$(printf '%s' "$nom" | iconv -f UTF-8 -t ASCII//TRANSLIT 2>/dev/null) || ascii=""
-    [ -z "$ascii" ] || nom="$ascii"
-    nom=$(printf '%s' "$nom" | LC_ALL=C tr -c ' -~' '_' | sed -E 's/[\\/:*?"<>|]/_/g; s/^[ .]+//; s/[ .]+$//')
-    nom=${nom:0:120}
-    nom=$(printf '%s' "$nom" | sed -E 's/[ .]+$//')
-    [ -n "$nom" ] || nom="audio_sans_nom"
-    maj=$(printf '%s' "$nom" | LC_ALL=C tr '[:lower:]' '[:upper:]')
-    case "${maj%%.*}" in CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9]) nom="${nom}_file";; esac
+# Active nullglob (évite une erreur si aucun .wav) et nocaseglob (.wav ou .WAV)
+shopt -s nullglob nocaseglob
+
+# Création des dossiers de destination locaux
+mkdir -p "SD" "MP3"
+
+# Fonction de nettoyage des noms pour compatibilité FAT32 stricte
+nettoyer_nom_fat32() {
+    local nom="$1"
+    local nom_temp=""
+    
+    # 1. Suppression des accents via iconv de manière sécurisée
+    if command -v iconv >/dev/null 2>&1; then
+        nom_temp=$(printf '%s' "$nom" | iconv -f UTF-8 -t ASCII//TRANSLIT 2>/dev/null)
+        if [ -n "$nom_temp" ]; then
+            nom="$nom_temp"
+        fi
+    fi
+
+    # 2. Remplacement des caractères interdits en FAT32 (\ / : * ? " < > |) et apostrophes par (_)
+    nom=$(printf '%s' "$nom" | sed -E 's/[\\\/:\*\?"<>\|'\'']/_/g')
+
+    # 3. Suppression des caractères de contrôle ASCII
+    nom=$(printf '%s' "$nom" | tr -d '[:cntrl:]')
+
+    # 4. Suppression des espaces et points en début et fin de nom
+    nom=$(printf '%s' "$nom" | sed -E 's/^[ \.]+|[ \.]+$//g')
+
+    # 5. Vérification des noms réservés MS-DOS/Windows
+    if [[ "$nom" =~ ^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$ ]]; then
+        nom="${nom}_file"
+    fi
+
+    # 6. Sécurité si le nom devient vide
+    if [ -z "$nom" ]; then
+        nom="audio_sans_nom"
+    fi
+
+    # 7. Troncature à 250 caractères maximum
+    nom="${nom:0:250}"
+
     printf '%s' "$nom"
 }
-# Évite aussi les doublons de casse sur un disque de travail sensible à la casse.
-existe_nom() {
-    local dossier="$1" cherche candidat base
-    cherche=$(printf '%s' "$2" | LC_ALL=C tr '[:upper:]' '[:lower:]')
-    for candidat in "$dossier"/*; do
-        base=$(printf '%s' "${candidat##*/}" | LC_ALL=C tr '[:upper:]' '[:lower:]')
-        [ "$base" != "$cherche" ] || return 0
+
+# Fonction réutilisable de nettoyage des fichiers cachés macOS dans un dossier cible
+nettoyer_caches_macos() {
+    local cible="$1"
+    [ -d "$cible" ] || return
+
+    # Fusionne/supprime les fichiers AppleDouble (._*) avec l'outil natif macOS
+    if command -v dot_clean >/dev/null 2>&1; then
+        dot_clean -m "$cible" 2>/dev/null
+    fi
+
+    shopt -s dotglob
+    for cache in "$cible"/.*; do
+        local base
+        base=$(basename "$cache")
+        if [[ "$base" == "." || "$base" == ".." ]]; then
+            continue
+        fi
+        
+        if [ -f "$cache" ]; then
+            rm -f "$cache"
+            echo "  -> Fichier caché supprimé : $cache"
+        elif [ -d "$cache" ] && [[ "$base" == ".Trashes" || "$base" == ".Spotlight-V100" || "$base" == ".fseventsd" || "$base" == ".TemporaryItems" ]]; then
+            rm -rf "$cache"
+            echo "  -> Dossier système macOS supprimé : $cache"
+        fi
     done
-    return 1
+    shopt -u dotglob
 }
 
-vus=(); convertis=0; ignores=0
-for fichier in ./*.wav; do
+# ==============================================================================
+# 1. CONVERSION AUDIO ET NETTOYAGE LOCAL
+# ==============================================================================
+for fichier in *.wav; do
     [ -f "$fichier" ] || continue
-    base=${fichier##*/}; nom=$(nettoyer_nom "${base%.*}")
-    cle=$(printf '%s' "$nom" | LC_ALL=C tr '[:upper:]' '[:lower:]')
-    collision=0
-    for deja in "${vus[@]}"; do [ "$deja" != "$cle" ] || collision=1; done
-    if [ "$collision" -eq 1 ]; then
-        printf 'IGNORÉ : collision de nom après nettoyage pour %s\n' "$base" >&2
-        ignores=$((ignores+1)); continue
-    fi
-    vus+=("$cle")
-    if existe_nom SD "$nom.wav"; then
-        printf 'IGNORÉ : SD/%s.wav existe déjà ; aucun original supprimé.\n' "$nom"
-        ignores=$((ignores+1)); continue
-    fi
-    printf 'Conversion : %s → SD/%s.wav\n' "$base" "$nom"
-    TMP_WAV=$(mktemp "$PWD/SD/.disco-wav.XXXXXX") || fail "Création du temporaire impossible."
-    if ! ffmpeg -nostdin -hide_banner -loglevel error -y -i "$fichier" -map 0:a:0 -map_metadata -1 -vn \
-        -ar 44100 -ac 2 -c:a pcm_s16le -fflags +bitexact -flags:a +bitexact -f wav "$TMP_WAV"; then
-        printf 'ERREUR : conversion échouée pour %s ; original conservé.\n' "$base" >&2
-        rm -f -- "$TMP_WAV"; TMP_WAV=""; ignores=$((ignores+1)); continue
-    fi
-    taille=$(stat -f '%z' "$TMP_WAV") || fail "Taille du WAV illisible."
-    if [ "$taille" -gt "$MAX_WAV_BYTES" ]; then
-        printf 'IGNORÉ : %s dépasse 128 Mio après conversion.\n' "$base" >&2
-        rm -f -- "$TMP_WAV"; TMP_WAV=""; ignores=$((ignores+1)); continue
-    fi
-    if ! mv -n "$TMP_WAV" "SD/$nom.wav" || [ -e "$TMP_WAV" ]; then
-        printf 'ERREUR : destination existante ou déplacement impossible.\n' >&2
-        rm -f -- "$TMP_WAV"; TMP_WAV=""; continue
-    fi
-    TMP_WAV=""; convertis=$((convertis+1))
-    if ! existe_nom MP3 "$nom.mp3"; then
-        TMP_MP3=$(mktemp "$PWD/MP3/.disco-mp3.XXXXXX") || fail "Création du temporaire MP3 impossible."
-        if ffmpeg -nostdin -hide_banner -loglevel error -y -i "SD/$nom.wav" -map_metadata -1 -vn -c:a libmp3lame -b:a 128k -f mp3 "$TMP_MP3"; then
-            mv -n "$TMP_MP3" "MP3/$nom.mp3" || printf 'ERREUR : déplacement MP3 impossible.\n' >&2
-        else
-            printf 'ERREUR : MP3 non créé pour %s ; le WAV et l’original restent disponibles.\n' "$nom" >&2
-        fi
-        [ ! -e "$TMP_MP3" ] || rm -f -- "$TMP_MP3"
-        TMP_MP3=""
-    fi
-done
-printf '\n%s WAV converti(s), %s ignoré(s). Les originaux sont conservés.\n' "$convertis" "$ignores"
-fichiers=(SD/*.wav)
-if [ "${#fichiers[@]}" -eq 0 ]; then printf 'Aucun WAV à copier.\n'; pause_fin; exit 0; fi
+    [[ "$fichier" == .* ]] && continue
 
-volumes=()
-for vol in /Volumes/*; do
-    [ ! -d "$vol" ] || [ -L "$vol" ] || volumes+=("$vol")
-done
-if [ "${#volumes[@]}" -eq 0 ]; then printf 'Aucun volume monté ; conversions disponibles dans SD/.\n'; pause_fin; exit 0; fi
-printf '\nVolumes montés (le support choisi sera vérifié avant copie) :\n'
-for i in "${!volumes[@]}"; do printf '  [%s] %s\n' "$((i+1))" "${volumes[$i]}"; done
-read -r -p "Numéro de la carte cible, ou 0 pour conserver seulement les conversions : " choix || choix=0
-if ! [[ "$choix" =~ ^[1-9][0-9]*$ ]] || [ "${#choix}" -gt 4 ] || [ "$choix" -gt "${#volumes[@]}" ]; then
-    printf 'Copie annulée.\n'; pause_fin; exit 0
-fi
-carte="${volumes[$((choix-1))]}"
-INFO=$(mktemp "${TMPDIR:-/tmp}/disco-volume.XXXXXX") || fail "Temporaire volume indisponible."
-diskutil info -plist "$carte" > "$INFO" || fail "Volume non reconnu par diskutil."
-plist() { /usr/libexec/PlistBuddy -c "Print :$1" "$INFO" 2>/dev/null || true; }
-if [ "$(plist Internal)" != "false" ] && [ "$(plist RemovableMedia)" != "true" ] && [ "$(plist Removable)" != "true" ]; then
-    fail "Le support doit être externe ou amovible (par exemple une carte SD)."
-fi
-[ "$(plist MountPoint)" = "$carte" ] || fail "Le point de montage ne correspond pas au volume choisi."
-[ "$(plist FilesystemType)" = "msdos" ] || fail "FAT32 requis ; aucune conversion ou aucun formatage du volume ne sera tenté."
-fsname="$(plist FilesystemName) $(plist FileSystemPersonality)"
-case "$fsname" in *FAT32*) ;; *) fail "Le volume n'est pas identifié comme FAT32.";; esac
-[ -w "$carte" ] && [ "$(plist ReadOnlyVolume)" != "true" ] && [ "$(plist ReadOnlyMedia)" != "true" ] || fail "Le volume est en lecture seule."
-printf '\nCible : %s\nCopie des WAV à la racine, sans écrasement ni formatage.\n' "$carte"
-read -r -p "Taper COPIER pour confirmer : " accord || accord=""
-[ "$accord" = "COPIER" ] || { printf 'Copie annulée.\n'; pause_fin; exit 0; }
+    nom_brut="${fichier%.*}"
+    nom_propre=$(nettoyer_nom_fat32 "$nom_brut")
 
-copies=0; echecs=0
-for fichier in "${fichiers[@]}"; do
-    [ -f "$fichier" ] || continue
-    nom=${fichier##*/}
-    if existe_nom "$carte" "$nom"; then printf 'IGNORÉ sur la carte : %s existe déjà.\n' "$nom"; continue; fi
-    # Revalide les WAV existants dans SD/, pas seulement ceux convertis pendant ce lancement.
-    infos=$(ffprobe -v error -select_streams a:0 -show_entries stream=codec_name,sample_rate,channels -of csv=p=0 "$fichier") || infos=""
-    case "$infos" in pcm_s16le,44100,1|pcm_s16le,44100,2|pcm_s16le,48000,1|pcm_s16le,48000,2) ;; *)
-        printf 'IGNORÉ : WAV incompatible %s (%s).\n' "$nom" "$infos" >&2; echecs=$((echecs+1)); continue;; esac
-    taille=$(stat -f '%z' "$fichier") || fail "Taille illisible."
-    if [ "$taille" -gt "$MAX_WAV_BYTES" ]; then printf 'IGNORÉ : %s dépasse 128 Mio.\n' "$nom" >&2; echecs=$((echecs+1)); continue; fi
-    TMP_COPY=$(mktemp "$carte/.disco-copy.XXXXXX") || fail "Impossible d'écrire sur la carte."
-    if cp -X "$fichier" "$TMP_COPY" && cmp -s "$fichier" "$TMP_COPY" && mv -n "$TMP_COPY" "$carte/$nom" && [ ! -e "$TMP_COPY" ]; then
-        TMP_COPY=""; copies=$((copies+1)); printf 'Copié : %s\n' "$nom"
-        # Seulement l'AppleDouble associé au fichier que ce script vient de copier.
-        [ ! -f "$carte/._$nom" ] || rm -f -- "$carte/._$nom"
+    fichier_sd="SD/${nom_propre}.wav"
+    fichier_mp3="MP3/${nom_propre}.mp3"
+
+    echo "Traitement de : $fichier"
+    if [ "$nom_brut" != "$nom_propre" ]; then
+        echo "  -> Nom nettoyé pour FAT32 : ${nom_propre}"
+    fi
+
+    # Conversion en WAV 16 bits, 44.1 kHz, stéréo sans métadonnées
+    if [ -e "$fichier_sd" ]; then
+        echo "ERREUR : Le fichier '$fichier_sd' existe déjà. Conversion WAV ignorée." >&2
     else
-        printf 'ERREUR : copie non finalisée pour %s ; original conservé.\n' "$nom" >&2
-        rm -f -- "$TMP_COPY"; TMP_COPY=""; echecs=$((echecs+1))
+        if ffmpeg -i "$fichier" -map_metadata -1 -vn -ar 44100 -ac 2 -c:a pcm_s16le -fflags +bitexact -flags:a +bitexact "$fichier_sd" -loglevel error; then
+            echo "  -> WAV converti et nettoyé (sans tags) avec succès dans SD/"
+        else
+            echo "ERREUR : Échec de la conversion WAV pour '$fichier'." >&2
+            continue
+        fi
+    fi
+
+    # Conversion du fichier SD/ en MP3 128 kbits
+    if [ ! -e "$fichier_sd" ]; then
+        echo "ERREUR : Le fichier source '$fichier_sd' est introuvable pour la conversion MP3." >&2
+        continue
+    fi
+
+    if [ -e "$fichier_mp3" ]; then
+        echo "ERREUR : Le fichier '$fichier_mp3' existe déjà. Conversion MP3 ignorée." >&2
+    else
+        if ffmpeg -i "$fichier_sd" -map_metadata -1 -b:a 128k "$fichier_mp3" -loglevel error; then
+            echo "  -> MP3 converti avec succès dans MP3/"
+            if command -v trash >/dev/null 2>&1; then
+                trash "$fichier"
+                echo "  -> Fichier original '$fichier' envoyé à la corbeille."
+            else
+                rm -f "$fichier"
+                echo "  -> Fichier original '$fichier' supprimé (commande 'trash' introuvable)."
+            fi
+        else
+            echo "ERREUR : Échec de la conversion MP3 pour '$fichier_sd'. L'original n'a pas été supprimé." >&2
+        fi
     fi
 done
-sync
-printf '\n%s fichier(s) copié(s), %s échec(s).\n' "$copies" "$echecs"
-if diskutil unmount "$carte"; then
-    printf 'Volume démonté. Vous pouvez retirer la carte.\n'
+
+echo ""
+echo "Nettoyage des fichiers cachés macOS dans les dossiers locaux..."
+nettoyer_caches_macos "SD"
+nettoyer_caches_macos "MP3"
+
+# ==============================================================================
+# 2. DÉTECTION DE LA CARTE SD ET COPIE SANS ÉCRASEMENT (MACOS)
+# ==============================================================================
+echo ""
+echo "Recherche d'une carte SD ou d'un volume externe dans /Volumes..."
+
+volumes_externes=()
+for vol in /Volumes/*; do
+    # Ignorer le disque système Macintosh HD (lien symbolique vers /)
+    if [ -d "$vol" ] && [ ! -L "$vol" ]; then
+        volumes_externes+=("$vol")
+    fi
+done
+
+carte_sd=""
+
+if [ ${#volumes_externes[@]} -eq 0 ]; then
+    echo "Aucune carte SD ou volume externe détecté dans /Volumes."
+elif [ ${#volumes_externes[@]} -eq 1 ]; then
+    carte_sd="${volumes_externes[0]}"
+    echo "Carte SD / Volume détecté : $carte_sd"
 else
-    printf 'Démontage impossible : éjecter la carte depuis le Finder avant de la retirer.\n' >&2
+    echo "Plusieurs volumes externes détectés :"
+    for i in "${!volumes_externes[@]}"; do
+        echo "  [$((i+1))] ${volumes_externes[$i]}"
+    done
+    read -r -p "Entrez le numéro de la carte SD cible (ou 0 pour annuler la copie) : " choix
+    if [[ "$choix" =~ ^[0-9]+$ ]] && [ "$choix" -ge 1 ] && [ "$choix" -le ${#volumes_externes[@]} ]; then
+        carte_sd="${volumes_externes[$((choix-1))]}"
+    else
+        echo "Copie vers la carte SD annulée."
+        carte_sd=""
+    fi
 fi
-pause_fin
+
+# Si un volume a été identifié, demande de confirmation avant copie
+if [ -n "$carte_sd" ]; then
+    echo ""
+    read -r -p "Appuyez sur [Entrée] pour copier le contenu de 'SD/' vers '$carte_sd' (ou Ctrl+C pour annuler)..."
+
+    fichiers_a_copier=(SD/*.wav)
+    if [ ${#fichiers_a_copier[@]} -eq 0 ]; then
+        echo "Aucun fichier WAV à copier dans le dossier 'SD/'."
+    else
+        echo "Copie des fichiers WAV vers $carte_sd (sans écrasement)..."
+        for fichier_sd in "${fichiers_a_copier[@]}"; do
+            [ -f "$fichier_sd" ] || continue
+            nom_fichier=$(basename "$fichier_sd")
+            destination="$carte_sd/$nom_fichier"
+
+            # Vérification de l'existence sur la carte SD avant toute copie
+            if [ -e "$destination" ]; then
+                echo "ERREUR : Le fichier '$nom_fichier' existe déjà sur la carte SD. Copie ignorée." >&2
+            else
+                if cp -X "$fichier_sd" "$destination"; then
+                    echo "  -> Copié : $nom_fichier"
+                else
+                    echo "ERREUR : Échec de la copie de '$nom_fichier' vers la carte SD." >&2
+                fi
+            fi
+        done
+        
+        echo "Nettoyage des fichiers cachés macOS sur la carte SD..."
+        nettoyer_caches_macos "$carte_sd"
+        
+        # Synchronisation de l'écriture sur le disque avant éjection
+        sync
+        
+        echo "Démontage de la carte SD ($carte_sd)..."
+        if diskutil unmount "$carte_sd"; then
+            echo "La carte SD a été démontée en toute sécurité. Vous pouvez la retirer."
+        else
+            echo "ERREUR : Impossible de démonter '$carte_sd' (vérifiez qu'aucune fenêtre Finder ne l'utilise)." >&2
+        fi
+    fi
+fi
+
+# ==============================================================================
+# 3. PAUSE FINALE AVANT DE QUITTER
+# ==============================================================================
+echo ""
+read -r -p "Traitement terminé. Appuyez sur [Entrée] pour quitter..."

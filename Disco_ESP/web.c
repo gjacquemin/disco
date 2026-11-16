@@ -157,6 +157,8 @@ static esp_err_t player_get(httpd_req_t *r) {
     if(!root) return reply(r,"500 Internal Server Error","Memoire insuffisante.");
     cJSON_AddBoolToObject(root,"playing",st.playing);
     cJSON_AddNumberToObject(root,"volume",st.volume);
+    cJSON_AddNumberToObject(root,"elapsedMs",st.elapsed_ms);
+    cJSON_AddNumberToObject(root,"durationMs",st.duration_ms);
     cJSON_AddBoolToObject(root,"fast",WIFI_FAST);
     const char *name=strrchr(st.path,'/');
     cJSON_AddStringToObject(root,"name",name?name+1:st.path);
@@ -169,7 +171,6 @@ static esp_err_t player_get(httpd_req_t *r) {
 static esp_err_t play_post(httpd_req_t *r) {
     char path[512];
     if(!authorized_request(r)) return reject(r,"403 Forbidden","Requete refusee.");
-    if(player_busy()) return reject(r,"409 Conflict","Lecture en cours. Arretez-la avant d'en lancer une autre.");
     if(!name_header(r,"X-File-Name",path)) return reject(r,"400 Bad Request","Nom WAV invalide.");
     FILE *f=fopen(path,"rb"); wav_info w;
     bool valid=f && wav_read(f,&w); if(f) fclose(f);
@@ -193,14 +194,25 @@ static esp_err_t volume_post(httpd_req_t *r) {
     if(player_set_volume((int)v)!=ESP_OK) return reply(r,"500 Internal Server Error","Volume non memorise : erreur NVS.");
     return reply(r,"200 OK","Volume memorise et demande au lecteur.");
 }
+static esp_err_t mode_post(httpd_req_t *r) {
+    if(!authorized_request(r)) return reject(r,"403 Forbidden","Requete refusee.");
+    char value[12];
+    if(httpd_req_get_hdr_value_str(r,"X-Mode",value,sizeof(value))!=ESP_OK)
+        return reject(r,"400 Bad Request","Mode attendu : random ou urn.");
+    int mode=!strcmp(value,"urn")?PLAYBACK_URN:!strcmp(value,"random")?PLAYBACK_RANDOM:-1;
+    if(mode<0) return reject(r,"400 Bad Request","Mode invalide.");
+    if(selection_set_mode(mode)!=ESP_OK) return reply(r,"500 Internal Server Error","Mode non memorise.");
+    return reply(r,"200 OK","Mode memorise pour le prochain demarrage. Lecture actuelle inchangee.");
+}
 void web_start(void) {
     if(server) return;
     // May run during playback in FAST mode; never mutate SD here.
-    httpd_config_t cfg=HTTPD_DEFAULT_CONFIG(); cfg.stack_size=8192; cfg.max_uri_handlers=11;
+    httpd_config_t cfg=HTTPD_DEFAULT_CONFIG(); cfg.stack_size=8192; cfg.max_uri_handlers=12;
     cfg.recv_wait_timeout=10; cfg.send_wait_timeout=10; cfg.lru_purge_enable=true;
     if(httpd_start(&server,&cfg)!=ESP_OK) { server=NULL; DISCO_LOGE("WEB","Echec demarrage"); return; }
     const httpd_uri_t routes[]={
         {.uri="/",.method=HTTP_GET,.handler=index_get},
+        {.uri="/api/mode",.method=HTTP_POST,.handler=mode_post},
         {.uri="/api/urn",.method=HTTP_GET,.handler=urn_get},
         {.uri="/api/urn/reset",.method=HTTP_POST,.handler=urn_reset_post},
         {.uri="/api/player",.method=HTTP_GET,.handler=player_get},

@@ -24,6 +24,24 @@ static urn_state state;
 static char **paths;
 static unsigned count;
 static bool ready;
+static int mode=PLAYBACK_MODE;
+void selection_init(void) {
+    nvs_handle_t nvs; uint8_t saved;
+    if(nvs_open("audio_settings",NVS_READONLY,&nvs)==ESP_OK) {
+        if(nvs_get_u8(nvs,"mode",&saved)==ESP_OK && saved<=1) mode=saved;
+        nvs_close(nvs);
+    }
+}
+esp_err_t selection_set_mode(int value) {
+    if(value!=PLAYBACK_URN && value!=PLAYBACK_RANDOM) return ESP_ERR_INVALID_ARG;
+    if(value==mode) return ESP_OK;
+    nvs_handle_t nvs; esp_err_t err=nvs_open("audio_settings",NVS_READWRITE,&nvs);
+    if(err!=ESP_OK) return err;
+    err=nvs_set_u8(nvs,"mode",value);
+    if(err==ESP_OK) err=nvs_commit(nvs);
+    nvs_close(nvs); if(err==ESP_OK) mode=value;
+    return err;
+}
 static int compare_paths(const void *a,const void *b) {
     return strcmp(*(char *const*)a,*(char *const*)b);
 }
@@ -79,7 +97,6 @@ esp_err_t selection_take(char chosen[512]) {
     nvs_handle_t nvs; err=nvs_open("random_player",NVS_READWRITE,&nvs);
     if(err!=ESP_OK) return err;
     bootloader_random_enable(); // Only called BEFORE audio or Wi-Fi.
-#if PLAYBACK_MODE == PLAYBACK_URN
     size_t size=sizeof(state);
     err=nvs_get_blob(nvs,"urn_v1",&state,&size);
     if(err==ESP_ERR_NVS_NOT_FOUND || (err==ESP_OK && (size!=sizeof(state)||
@@ -88,10 +105,10 @@ esp_err_t selection_take(char chosen[512]) {
         refill(digest); err=ESP_OK;
     }
     if(err==ESP_OK) {
-        if(count) strcpy(chosen,paths[state.order[state.cursor++]]);
+        if(mode==PLAYBACK_URN && count) strcpy(chosen,paths[state.order[state.cursor++]]);
         err=save(nvs); // Removal durable BEFORE the first audio sample.
     }
-#else
+    if(mode==PLAYBACK_RANDOM && err==ESP_OK) {
     char last[512]={0}; size_t size=sizeof(last); int skip=-1;
     nvs_get_str(nvs,"last",last,&size);
     if(AVOID_LAST_TRACK && count>1) for(unsigned i=0;i<count;i++) if(!strcmp(last,paths[i])) skip=i;
@@ -101,12 +118,11 @@ esp_err_t selection_take(char chosen[512]) {
         if(err==ESP_OK) err=nvs_commit(nvs);
     }
     ready=err==ESP_OK;
-#endif
+    }
     bootloader_random_disable(); nvs_close(nvs);
     return err!=ESP_OK?err:(count?ESP_OK:ESP_ERR_NOT_FOUND);
 }
 esp_err_t selection_reset(void) {
-#if PLAYBACK_MODE == PLAYBACK_URN
     unsigned char digest[32]; esp_err_t err=scan(digest);
     if(err!=ESP_OK) return err;
     // HTTP server runs after Wi-Fi connects: hardware RNG has RF entropy.
@@ -114,13 +130,11 @@ esp_err_t selection_reset(void) {
     nvs_handle_t nvs; err=nvs_open("random_player",NVS_READWRITE,&nvs);
     if(err!=ESP_OK) return err;
     err=save(nvs); nvs_close(nvs); return err;
-#else
-    return ESP_OK;
-#endif
+
 }
 cJSON *selection_status(void) {
     cJSON *root=cJSON_CreateObject(); if(!root) return NULL;
-#if PLAYBACK_MODE == PLAYBACK_URN
+    if(mode==PLAYBACK_URN) {
     cJSON_AddStringToObject(root,"mode","urn");
     cJSON_AddBoolToObject(root,"ready",ready);
     cJSON_AddNumberToObject(root,"total",count);
@@ -133,8 +147,6 @@ cJSON *selection_status(void) {
             cJSON_Delete(item); cJSON_Delete(root); return NULL;
         }
     }
-#else
-    cJSON_AddStringToObject(root,"mode","random");
-#endif
+} else { cJSON_AddStringToObject(root,"mode","random"); }
     return root;
 }
