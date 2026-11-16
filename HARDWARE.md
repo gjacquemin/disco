@@ -13,6 +13,7 @@ Ce guide décrit le montage retenu pour Disco avec une carte **ESP32-A1S Audio K
 | Boule à facettes | Eurolite Mirror Ball 30 cm gold | Boule à facettes | 39,00 € | [Référence Thomann](https://www.thomann.fr/eurolite_mirror_ball_30_cm_gold.htm) |
 | Moteur | Eurolite MD-1030 Mirror Ball Motor 3kg | Moteur rotatif avec fiche d'alimentation | 14,90 € | [Référence Thomann](https://www.thomann.fr/eurolite_md_1030_mirror_ball_motor_3kg.htm) |
 | Lumière | Eurolite LED PST-5 QCL Spot WH | Projecteur LED | 45,00 € | [Référence Thomann](https://www.thomann.fr/eurolite_led_pst_5_qcl_spot_wh.htm) |
+
 Les liens identifient les références choisies ; vérifier les caractéristiques et la révision effectivement livrées. Prévoir **5 V / 2 A disponibles pour la carte**, plus le courant demandé par les enceintes.
 
 ## Branchements
