@@ -115,7 +115,13 @@ for fichier in *.wav; do
     else
         if ffmpeg -i "$fichier_sd" -map_metadata -1 -b:a 128k "$fichier_mp3" -loglevel error; then
             echo "  -> MP3 converti avec succès dans MP3/"
-            rm "$fichier"
+            if command -v trash >/dev/null 2>&1; then
+                trash "$fichier"
+                echo "  -> Fichier original '$fichier' envoyé à la corbeille."
+            else
+                rm -f "$fichier"
+                echo "  -> Fichier original '$fichier' supprimé (commande 'trash' introuvable)."
+            fi
             echo "  -> Fichier original '$fichier' supprimé."
         else
             echo "ERREUR : Échec de la conversion MP3 pour '$fichier_sd'. L'original n'a pas été supprimé." >&2
@@ -125,7 +131,6 @@ done
 
 echo ""
 echo "Nettoyage des fichiers cachés macOS dans les dossiers locaux..."
-nettoyer_caches_macos "."
 nettoyer_caches_macos "SD"
 nettoyer_caches_macos "MP3"
 
