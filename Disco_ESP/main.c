@@ -32,6 +32,7 @@
 #include "pcm.h"
 #include "diagnostic_tone.h"
 #include "web.h"
+#include "wifi_settings.h"
 static const char *TAG="DISCO";
 enum { AUDIO_DMA_COUNT=16, AUDIO_DMA_FRAMES=256 };
 static EventGroupHandle_t wifi_events;
@@ -56,9 +57,9 @@ static void wifi_task(void *arg) {
     ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT,ESP_EVENT_ANY_ID,wifi_event,NULL));
     ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT,IP_EVENT_STA_GOT_IP,wifi_event,NULL));
     wifi_config_t cfg={0};
-    size_t sl=strlen(WIFI_SSID), pl=strlen(WIFI_PASSWORD);
-    if(!sl || sl>32 || pl>63) { DISCO_LOGE(TAG,"Identifiants Wi-Fi invalides"); vTaskDelete(NULL); return; }
-    memcpy(cfg.sta.ssid,WIFI_SSID,sl); memcpy(cfg.sta.password,WIFI_PASSWORD,pl);
+    size_t sl=strlen(wifi_active.ssid), pl=strlen(wifi_active.password);
+    if(!wifi_credentials_valid(&wifi_active)) { DISCO_LOGE(TAG,"Identifiants Wi-Fi invalides"); vTaskDelete(NULL); return; }
+    memcpy(cfg.sta.ssid,wifi_active.ssid,sl); memcpy(cfg.sta.password,wifi_active.password,pl);
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA,&cfg));
     DISCO_LOGI(TAG,"Tentative Wi-Fi (FAST=%d)",WIFI_FAST);
@@ -70,7 +71,7 @@ static void wifi_task(void *arg) {
 }
 static void start_wifi(void) {
     if(wifi_started) return;
-    if(!strcmp(WIFI_SSID,"TON_SSID") || !strlen(WIFI_SSID)) {
+    if(!strcmp(wifi_active.ssid,"TON_SSID") || !strlen(wifi_active.ssid)) {
         wifi_started=true; DISCO_LOGI(TAG,"Wi-Fi desactive : SSID non configure"); return;
     }
     wifi_started=true;
@@ -237,11 +238,13 @@ void player_run(void) {
         if(nvs_get_u8(nvs,"volume",&v)==ESP_OK && v<=100) status.volume=v;
         nvs_close(nvs);
     }
+    wifi_settings_load();
     selection_init();
     play_queue=xQueueCreate(1,sizeof(play_command));
     if(!play_queue) { finish("Memoire insuffisante."); start_wifi(); return; }
     DISCO_LOGI(TAG,"Volume memorise/initial=%d ; mode de selection charge depuis les reglages",current_volume());
     bool mounted=mount_sd();
+    if(mounted) wifi_settings_import();
     if(mounted) unlink(AUDIO_DIRECTORY "/.upload.part"); // Cleanup BEFORE all audio/HTTP.
     char chosen[512];
     if(AUDIO_DIAGNOSTIC) { strcpy(chosen,"test interne"); err=ESP_OK; }

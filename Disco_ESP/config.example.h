@@ -29,3 +29,9 @@
 // Wi-Fi apres le test meme si WIFI_FAST=1 ; volume temporaire 35, non memorise.
 // Remettre a 0 pour le fonctionnement normal.
 #define AUDIO_DIAGNOSTIC 0
+
+// Taille maximale de la page HTML autonome sur SD : 1 Mio.
+#define WEB_MAX_HTML_BYTES (1024U * 1024U)
+
+// Fichier optionnel de remplacement et memorisation des identifiants Wi-Fi.
+#define WIFI_SD_FILE "/sdcard/wifi.txt"

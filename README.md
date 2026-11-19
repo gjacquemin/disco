@@ -7,7 +7,7 @@ Lecteur pour **ESP32-A1S Audio Kit V2.2**, développé pour **Arduino IDE**. À 
 - Lecture dès le démarrage, sans attendre le réseau.
 - Deux modes sélectionnables depuis le Web et mémorisés : Urne persistante ou Random.
 - Aucune reprise après coupure : chaque morceau commence au début.
-- **Wi-Fi fast activé par défaut** : connexion Wi-Fi dès que la lecture a commencé.
+- **Wi-Fi fast activé par défaut** : connexion dès que la lecture a commencé.
 - Interface Web sans Internet ni dépendance à un CDN : envoi, suppression, renommage, écoute manuelle, arrêt, volume mémorisé.
 - WAV mono dupliqués sur les deux sorties ; WAV stéréo avec canaux gauche et droit conservés sur le jack EARPHONES.
 
@@ -98,6 +98,7 @@ Un seul fichier personnel à modifier : **Disco_ESP/config.local.h**. `config.h`
 | `AUDIO_DIRECTORY` | `"/sdcard"` | Point de montage de la racine de la SD, à conserver pour cet usage |
 | `PLAYBACK_MODE` | `PLAYBACK_URN` | Mode initial ; le choix Random/Urne mémorisé depuis le Web est prioritaire |
 | `AVOID_LAST_TRACK` | `1` | Exclure le dernier titre, seulement en mode aléatoire |
+| `WEB_MAX_HTML_BYTES` | `1024U * 1024U` | Taille maximale de chaque fichier Web sur SD (1 Mio) |
 | `WEB_MAX_FILE_BYTES` | `128U * 1024U * 1024U` | Taille maximale d'un envoi Web |
 | `CODEC_PROFILE` | `0` | Détection automatique ; voir [HARDWARE.md](HARDWARE.md#profils-audio) |
 
@@ -143,7 +144,7 @@ Ouvrir **http://ADRESSE_IP/** depuis un appareil du même réseau. L'IP est affi
 
 La liste déroulante contient tous les WAV et sélectionne le morceau en cours. Choisir un autre titre arrête le précédent, attend la libération du codec puis lance le nouveau depuis le début. **STOP** arrête la lecture ; le sélecteur revient sur « Choisir un morceau… », ce qui permet aussi de relancer le même titre.
 
-La barre de progression et les durées écoulée/totale sont actualisées environ toutes les 750 ms. La position est une estimation calculée à partir des trames transmises, en tenant compte de la capacité DMA (écart possible d’environ un tampon audio). La barre n’est pas un contrôle de déplacement dans le morceau.
+La barre de progression et les durées écoulée/totale sont actualisées environ toutes les 1,5 seconde. La position est une estimation calculée à partir des trames transmises, en tenant compte de la capacité DMA (écart possible d’environ un tampon audio). La barre n’est pas un contrôle de déplacement dans le morceau.
 
 Le slider de volume affiche la valeur pendant le déplacement et l’applique et la mémorise au relâchement, sans bouton de validation. Aucun enregistrement n’a lieu à chaque mouvement ; une valeur inchangée n’est pas réécrite. Les erreurs de sauvegarde sont affichées. Le volume demeure mémorisé après extinction.
 
@@ -183,11 +184,11 @@ La SD est lue pendant la lecture. Les modifications de fichiers sont réservées
 | `tools/embed_web.py` | Régénération de la page avec Python 3 |
 | `LICENSE`, `LICENSES/`, `THIRD_PARTY.md` | Licence et notices des dépendances |
 
-Après modification du HTML :
+Pour actualiser la page de secours embarquée dans le firmware :
 ```sh
 python3 tools/embed_web.py
 ```
-Puis recompiler dans Arduino IDE. La page est embarquée dans le firmware ; rien à copier sur la SD en dehors des WAV.
+Puis recompiler dans Arduino IDE. La page est embarquée dans le firmware comme secours. Pour modifier seulement le HTML/CSS/JavaScript après installation du firmware compatible, téléverser `Disco_ESP/data/index.html` depuis la section Fichiers → Mettre à jour l’interface Web, sans recompiler. Les modifications du code C/C++ ou des API nécessitent toujours un téléversement du firmware.
 
 Le `.gitignore` exclut les réglages personnels, les tests locaux, le rapport local de validation et les fichiers de compilation. Garder le modèle sans identifiants réels. Vérifier avant publication :
 ```sh
@@ -256,3 +257,65 @@ Pour isoler un grésillement :
 Le tampon DMA dispose de 16 blocs de 256 trames et les lectures SD sont regroupées
 par blocs de 4 Kio pour mieux absorber les variations de latence. Cela ne garantit
 pas la disparition d'un bruit analogique ou d'un problème d'horloge.
+
+## Voyant de connexion
+
+Le voyant vert **Connecté** indique que le navigateur reçoit une réponse de l’ESP32,
+pas simplement que le téléphone ou l’ordinateur dispose d’une connexion Internet.
+Une vérification est effectuée environ toutes les 1,5 seconde, avec un délai maximal
+de réponse de 3 secondes. Au premier échec, le voyant passe au rouge **Déconnecté**,
+les commandes sont désactivées et l’affichage de lecture est remis à l’état déconnecté.
+La page reste ouverte pour détecter le retour de la carte ; elle se recharge entièrement
+une seule fois lors du passage rouge → vert. Le premier affichage connecté ne provoque
+pas de rechargement en boucle. Si l’adresse IP de la carte change, ouvrir sa nouvelle adresse.
+
+La surveillance est suspendue pendant une commande ou un téléversement : le serveur
+ESP32 traite les requêtes successivement, et son occupation ne doit pas être confondue
+avec une déconnexion. Elle reprend à la fin de l’opération.
+
+## Smartphone et écran d’accueil
+
+L’interface s’adapte aux téléphones en portrait et paysage : commandes tactiles d’au moins 44 px, noms longs sur plusieurs lignes, prise en compte des encoches et de la zone du geste d’accueil. Le zoom du navigateur reste disponible. Le curseur de volume conserve son comportement : enregistrement au relâchement du doigt seulement.
+
+- **iPhone / iPad** : ouvrir l’adresse du lecteur dans Safari, puis **Partager → Sur l’écran d’accueil** (ou **Ajouter à l’écran d’accueil**). Activer « Ouvrir comme app » si cette option est proposée, puis Ajouter. Le nom est **Disco**, avec une boule disco dorée et une note de musique.
+- **Android** : ouvrir l’adresse dans Chrome, puis le menu **Ajouter à l’écran d’accueil**. Selon le navigateur et sa version, il peut s’agir d’un raccourci ouvrant le navigateur plutôt que d’une application autonome.
+- Le téléphone doit pouvoir joindre la carte sur son réseau local. Une adresse réservée dans le DHCP du routeur évite que le raccourci devienne obsolète si l’adresse change.
+
+Le manifeste demande un affichage autonome et les métadonnées iOS sont incluses. Le serveur ESP32 utilise HTTP : l’installation PWA complète n’est donc pas garantie, car elle exige normalement HTTPS (hors localhost). Aucun service worker ni cache hors connexion n’est installé ; le lecteur doit être accessible pour ouvrir la page. Au retour au premier plan, la page vérifie la connexion. La musique sort toujours sur le jack de la carte, pas sur le téléphone.
+
+Pour cette version, **reflasher une fois le firmware** afin d’ajouter les routes du manifeste et des icônes. Si un ancien `index.html` est déjà présent sur la SD, téléverser aussi le nouveau `Disco_ESP/data/index.html` depuis l’interface (ou restaurer la page embarquée), sinon il reste prioritaire. Les évolutions suivantes de la mise en page restent téléversables sans reflash. Les icônes et le manifeste sont embarqués et disponibles même dans `/recovery` ; leur modification nécessite de régénérer `page.cpp` / `web_assets.h` avec `python3 tools/embed_web.py`, puis de reflasher. Supprimer puis recréer le raccourci si le téléphone conserve une ancienne icône.
+
+Sources : [installation PWA (MDN)](https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps/Guides/Making_PWAs_installable) ; [configuration des applications Web iOS (Apple)](https://developer.apple.com/library/archive/documentation/AppleApplications/Reference/SafariWebContent/ConfiguringWebApplications/ConfiguringWebApplications.html).
+
+## Dossier Web sur la SD
+
+Cette version utilise `/www/index.html`. Déplacer l’ancien `index.html` de la racine vers `/www/index.html` : il n’est plus chargé à la racine. Les WAV restent à la racine, sans dossier. Le dossier `/www` est créé au premier téléversement Web.
+
+Exemple : `/www/index.html`, `/www/style.css`, `/www/app.js`, `/www/image.png`. Dans le HTML : `<link rel="stylesheet" href="style.css">`, `<script src="app.js"></script>` et `<img src="image.png" alt="">`. Pas de sous-dossiers. Utiliser des URL absolues pour les API (`/api/player`, etc.) et `/recovery`.
+
+Depuis Fichiers → Mettre à jour l’interface Web, sélectionner plusieurs fichiers, puis Téléverser les fichiers Web. Le nom est conservé et un fichier existant est remplacé. Les dépendances sont envoyées avant `index.html` ; un échec interrompt le lot. Cliquer ensuite sur Ouvrir l’interface. La liste affiche les tailles et permet la suppression. Les écritures nécessitent STOP. Formats : HTML, JS, CSS, PNG, JPG/JPEG, GIF, WebP, SVG, ICO, JSON et WOFF2 ; limite `WEB_MAX_HTML_BYTES` (1 Mio) par fichier, y compris images. Les noms ne doivent pas contenir de séparateurs ni commencer par un point.
+
+La racine HTTP redirige vers `/www/index.html` pour résoudre correctement les liens relatifs. Si l’index manque, est vide, trop gros ou inaccessible, l’interface embarquée prend le relais ; `/recovery` reste toujours disponible. Restaurer la page embarquée supprime seulement `/www/index.html`, en conservant les autres ressources. Pour une page HTML invalide ou un JS défectueux, passer manuellement par `/recovery`. Les ressources absentes renvoient 404.
+
+Les transferts utilisent un fichier temporaire puis un remplacement avec sauvegarde de l’ancien fichier. Un lot complet n’est pas atomique : ne pas couper le courant pendant la mise à jour. Les noms des sons, le volume et l’urne ne sont pas modifiés. Aucun accès HTTP général à la carte SD n’est ouvert.
+
+Nouvelles API : GET `/api/ui/files`, POST `/api/ui/upload` (corps brut, en-têtes `X-Manage: 1` et `X-File-Name` encodé par `encodeURIComponent`), POST `/api/ui/delete` (mêmes en-têtes). `/api/ui/reset` restaure la page embarquée. Reflasher une fois pour activer ces routes. Ensuite, les fichiers du dossier Web se mettent à jour sans reflash.
+
+Le dossier **`www` fourni dans le projet est prêt à copier à la racine de la SD** : index.html, style.css, app.js et icon-192.png. On peut aussi téléverser ces quatre fichiers depuis `/recovery`. La page de secours reste autonome. Après modification de sa source `Disco_ESP/data/index.html`, lancer `python3 tools/export_www.py` pour régénérer la version séparée pour la SD. Les icônes d’écran d’accueil et le manifeste restent servis par le firmware.
+
+## Identifiants Wi-Fi depuis la carte SD
+
+Au démarrage, les identifiants mémorisés en NVS sont utilisés en priorité sur `WIFI_SSID` et `WIFI_PASSWORD` du fichier `config.local.h`. En l’absence de valeur mémorisée, les paramètres compilés sont utilisés. Si `/wifi.txt` est présent à la racine de la SD, il remplace ces identifiants et les mémorise avant la lecture. Le mode WIFI_FAST garde son fonctionnement habituel.
+
+Copier `wifi.example.txt`, le renommer en `wifi.txt` et renseigner :
+
+```text
+ssid=MonReseau
+password=MonMotDePasse
+```
+
+Texte UTF-8, fins de lignes Windows ou Unix acceptées. Les clés `ssid` et `password` sont obligatoires, en minuscules, une seule fois chacune. Ne pas mettre de guillemets ni d’espaces autour du signe `=` : les espaces dans les valeurs sont conservés. Les lignes vides et les commentaires commençant par `#` sont acceptés. SSID : 1 à 32 octets UTF-8 ; mot de passe : 8 à 63 octets, ou 64 caractères hexadécimaux ; `password=` pour un réseau ouvert. Maximum 512 octets pour le fichier. Le chemin est réglable avec `WIFI_SD_FILE` (défaut `/sdcard/wifi.txt`).
+
+Après un import réussi, le fichier peut être retiré : les identifiants restent mémorisés après coupure du courant, même sans SD. S’il reste présent, aucune écriture NVS supplémentaire n’est effectuée tant que le contenu utile est identique. Un fichier mal formé ou un échec de mémorisation conserve les anciens paramètres. L’import valide le format, pas la connexion au réseau : un mot de passe erroné mais bien formé est mémorisé ; le corriger avec un nouveau `wifi.txt` puis redémarrer.
+
+Le port série annonce l’import ou son échec sans afficher le mot de passe. Le fichier SD contient les identifiants en clair : le retirer après import si souhaité. `wifi.txt` est exclu de Git ; seul le modèle sans identifiants personnels est fourni. Effacer complètement la mémoire flash efface aussi les identifiants mémorisés. Modifier seulement le fichier `.h` ne remplace pas une configuration déjà mémorisée : utiliser `wifi.txt` pour cela.

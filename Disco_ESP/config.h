@@ -8,3 +8,12 @@
 #else
 #error "Copiez config.example.h en config.local.h dans ce dossier, puis renseignez vos reglages."
 #endif
+
+// Compatibilite avec les configurations personnelles plus anciennes.
+#ifndef WEB_MAX_HTML_BYTES
+#define WEB_MAX_HTML_BYTES (1024U * 1024U)
+#endif
+
+#ifndef WIFI_SD_FILE
+#define WIFI_SD_FILE "/sdcard/wifi.txt"
+#endif
