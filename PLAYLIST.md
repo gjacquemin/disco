@@ -6,6 +6,7 @@ Sélection proposée pour Disco, avec une intention : faire commencer chaque ext
 
 | Artiste | Titre | Année |
 | :--- | :--- | :--- |
+| 10cc | I m Not In Love | 1975 |
 | Alain Chamfort | Manureva | 1979 |
 | Alice Deejay | Better Off Alone | 1998 |
 | Axel Bauer | Cargo de nuit | 1983 |
@@ -25,6 +26,7 @@ Sélection proposée pour Disco, avec une intention : faire commencer chaque ext
 | Desireless | Voyage, Voyage | 1986 |
 | Diana Ross | I'm Coming Out | 1980 |
 | Diane Tell | Si j’étais un homme | 1980 |
+| Eddy Mitchell | Couleur menthe à l'eau | 1980 |
 | Elsa | T’en va pas | 1986 |
 | Frankie Goes to Hollywood | Relax | 1983 |
 | Gala | Freed from Desire | 1996 |
@@ -58,6 +60,7 @@ Sélection proposée pour Disco, avec une intention : faire commencer chaque ext
 | The Pointer Sisters | I'm So Excited | 1982 |
 | The Weather Girls | It's Raining Men | 1982 |
 | Thierry Hazard | Le Jerk ! | 1990 |
+| Whitney Houston | I Wanna Dance With Somebody | 1987 |
 | Whitney Houston | I Will Always Love You | 1992 |
 
 ## Préparer les extraits

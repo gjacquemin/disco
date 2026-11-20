@@ -37,6 +37,8 @@ static const char *TAG="DISCO";
 enum { AUDIO_DMA_COUNT=16, AUDIO_DMA_FRAMES=256 };
 static EventGroupHandle_t wifi_events;
 static bool wifi_started;
+static bool wifi_attempted;
+static disco_wifi_credentials wifi_connect_credentials;
 static void wifi_event(void *arg, esp_event_base_t base, int32_t id, void *data) {
     if(base==WIFI_EVENT && id==WIFI_EVENT_STA_START) esp_wifi_connect();
     if(base==WIFI_EVENT && id==WIFI_EVENT_STA_DISCONNECTED) xEventGroupSetBits(wifi_events,2);
@@ -57,9 +59,9 @@ static void wifi_task(void *arg) {
     ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT,ESP_EVENT_ANY_ID,wifi_event,NULL));
     ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT,IP_EVENT_STA_GOT_IP,wifi_event,NULL));
     wifi_config_t cfg={0};
-    size_t sl=strlen(wifi_active.ssid), pl=strlen(wifi_active.password);
-    if(!wifi_credentials_valid(&wifi_active)) { DISCO_LOGE(TAG,"Identifiants Wi-Fi invalides"); vTaskDelete(NULL); return; }
-    memcpy(cfg.sta.ssid,wifi_active.ssid,sl); memcpy(cfg.sta.password,wifi_active.password,pl);
+    size_t sl=strlen(wifi_connect_credentials.ssid), pl=strlen(wifi_connect_credentials.password);
+    if(!wifi_credentials_valid(&wifi_connect_credentials)) { DISCO_LOGE(TAG,"Identifiants Wi-Fi invalides"); vTaskDelete(NULL); return; }
+    memcpy(cfg.sta.ssid,wifi_connect_credentials.ssid,sl); memcpy(cfg.sta.password,wifi_connect_credentials.password,pl);
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA,&cfg));
     DISCO_LOGI(TAG,"Tentative Wi-Fi (FAST=%d)",WIFI_FAST);
@@ -75,7 +77,9 @@ static void start_wifi(void) {
         wifi_started=true; DISCO_LOGI(TAG,"Wi-Fi desactive : SSID non configure"); return;
     }
     wifi_started=true;
-    if(xTaskCreate(wifi_task,"wifi",4096,NULL,3,NULL)!=pdPASS) DISCO_LOGE(TAG,"Creation tache Wi-Fi impossible");
+    wifi_connect_credentials=wifi_active; // Immutable snapshot for the Wi-Fi task.
+    wifi_attempted=xTaskCreate(wifi_task,"wifi",4096,NULL,3,NULL)==pdPASS;
+    if(!wifi_attempted) DISCO_LOGE(TAG,"Creation tache Wi-Fi impossible");
 }
 static bool mount_sd(void) {
     sdmmc_host_t host=SDMMC_HOST_DEFAULT();
@@ -227,7 +231,7 @@ cleanup:
                error?"erreur":stopped()?"stop":"fin",(unsigned long)max_read_us,(unsigned long)slow_reads);
     if(error) DISCO_LOGE(TAG,"%s",error);
     finish(error);
-    if(boot) start_wifi(); // Default: after sound; FAST fallback for short tracks/errors.
+    // Startup SD configuration is handled by player_run, after audio cleanup.
 }
 void player_run(void) {
     esp_err_t err=nvs_flash_init();
@@ -244,7 +248,6 @@ void player_run(void) {
     if(!play_queue) { finish("Memoire insuffisante."); start_wifi(); return; }
     DISCO_LOGI(TAG,"Volume memorise/initial=%d ; mode de selection charge depuis les reglages",current_volume());
     bool mounted=mount_sd();
-    if(mounted) wifi_settings_import();
     if(mounted) unlink(AUDIO_DIRECTORY "/.upload.part"); // Cleanup BEFORE all audio/HTTP.
     char chosen[512];
     if(AUDIO_DIAGNOSTIC) { strcpy(chosen,"test interne"); err=ESP_OK; }
@@ -253,7 +256,12 @@ void player_run(void) {
     if(err==ESP_OK) {
         portENTER_CRITICAL(&player_lock); strcpy(status.path,chosen); portEXIT_CRITICAL(&player_lock);
         play_file(chosen,true);
-    } else { finish("Carte SD ou selection indisponible."); start_wifi(); }
+    } else { finish("Carte SD ou selection indisponible."); }
+    // No wifi.txt lookup or credential commit before/during startup playback.
+    if(mounted) wifi_settings_import();
+    // FAST keeps its current connection; imported credentials apply next boot.
+    // If no attempt was launched (including an unconfigured SSID), use them now.
+    if(!wifi_attempted) { wifi_started=false; start_wifi(); }
     play_command cmd;
     for(;;) if(xQueueReceive(play_queue,&cmd,portMAX_DELAY)==pdTRUE) play_file(cmd.path,false);
 }
