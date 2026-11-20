@@ -305,7 +305,7 @@ Le dossier **`www` fourni dans le projet est prêt à copier à la racine de la 
 
 ## Identifiants Wi-Fi depuis la carte SD
 
-Au démarrage, les identifiants mémorisés en NVS sont utilisés en priorité sur `WIFI_SSID` et `WIFI_PASSWORD` du fichier `config.local.h`. En l’absence de valeur mémorisée, les paramètres compilés sont utilisés. Si `/wifi.txt` est présent à la racine de la SD, il remplace ces identifiants et les mémorise avant la lecture. Le mode WIFI_FAST garde son fonctionnement habituel.
+Au démarrage, les identifiants mémorisés en NVS sont utilisés en priorité sur `WIFI_SSID` et `WIFI_PASSWORD` du fichier `config.local.h`. En l’absence de valeur mémorisée, les paramètres compilés sont utilisés. Après la fin du morceau de démarrage (ou son arrêt/échec), le programme recherche `/wifi.txt` à la racine de la SD, puis importe et mémorise les identifiants valides. Aucune recherche de ce fichier ni écriture de ces identifiants en NVS n’a lieu pendant la lecture. Le mode WIFI_FAST garde son fonctionnement habituel.
 
 Copier `wifi.example.txt`, le renommer en `wifi.txt` et renseigner :
 
@@ -319,3 +319,7 @@ Texte UTF-8, fins de lignes Windows ou Unix acceptées. Les clés `ssid` et `pas
 Après un import réussi, le fichier peut être retiré : les identifiants restent mémorisés après coupure du courant, même sans SD. S’il reste présent, aucune écriture NVS supplémentaire n’est effectuée tant que le contenu utile est identique. Un fichier mal formé ou un échec de mémorisation conserve les anciens paramètres. L’import valide le format, pas la connexion au réseau : un mot de passe erroné mais bien formé est mémorisé ; le corriger avec un nouveau `wifi.txt` puis redémarrer.
 
 Le port série annonce l’import ou son échec sans afficher le mot de passe. Le fichier SD contient les identifiants en clair : le retirer après import si souhaité. `wifi.txt` est exclu de Git ; seul le modèle sans identifiants personnels est fourni. Effacer complètement la mémoire flash efface aussi les identifiants mémorisés. Modifier seulement le fichier `.h` ne remplace pas une configuration déjà mémorisée : utiliser `wifi.txt` pour cela.
+
+### Import Wi-Fi différé
+
+Avec `WIFI_FAST=1`, la connexion pendant le morceau utilise les identifiants déjà mémorisés ou compilés. Si une tentative a été lancée, les identifiants importés après le morceau seront utilisés au prochain redémarrage, sans couper la connexion actuelle. Avec `WIFI_FAST=0`, ou si aucun SSID n’était configuré, l’import a lieu avant la première tentative et les nouveaux identifiants sont utilisés immédiatement. Sans morceau lisible, l’import est effectué sans attendre. Une coupure avant la fin du morceau empêche cet import : laisser terminer une fois le morceau pour mémoriser le nouveau réseau.
