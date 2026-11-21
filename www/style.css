@@ -92,3 +92,13 @@ body:not(.disco-playing) .disco-glint{visibility:hidden}
 @keyframes mirror-glint{0%,100%{opacity:.1;transform:scale(.5)}50%{opacity:.95;transform:scale(1.15)}}
 @keyframes mirror-sweep{0%{transform:translate(-5vw,-4vh) rotate(10deg) scale(.6);opacity:.15}50%{opacity:.9}100%{transform:translate(8vw,6vh) rotate(65deg) scale(1.2);opacity:.25}}
 @media(prefers-reduced-motion:reduce){.disco-shade,.disco-reflections,.disco-glint{display:none}}
+
+/* Transfer details remain legible on narrow screens. */
+.transfer-panel{margin:18px 0;padding:14px;border:1px solid #cfaddb;border-radius:12px;background:#f7eafa;color:#382347}
+.transfer-panel[hidden]{display:none}.transfer-name{font-weight:650;overflow-wrap:anywhere;margin-bottom:10px}
+.transfer-meter{position:relative;min-height:66px;border:1px solid #ba94c9;border-radius:10px;overflow:hidden;background:#fdf8ff}
+.transfer-meter progress{position:absolute;inset:0;width:100%;height:100%;margin:0;border-radius:0;opacity:.32}
+.transfer-meter progress::-webkit-progress-bar{background:transparent}.transfer-meter progress::-webkit-progress-value{background:#dab44f}.transfer-meter progress::-moz-progress-bar{background:#dab44f}
+.transfer-metrics{position:relative;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px 14px;padding:12px;font-size:13px;font-variant-numeric:tabular-nums}
+.transfer-metrics strong{font-size:19px}.transfer-note{margin:8px 0 0;font-size:12px;overflow-wrap:anywhere}.transfer-panel.failed{border-color:#b3263d}
+@media(max-width:420px){.transfer-metrics{justify-content:flex-start}.transfer-speed{flex-basis:100%}}

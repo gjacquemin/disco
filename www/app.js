@@ -40,8 +40,36 @@ for(const type of ['dragenter','dragover'])$('drop').addEventListener(type,e=>{e
 for(const type of ['dragleave','drop'])$('drop').addEventListener(type,e=>{e.preventDefault();$('drop').classList.remove('over');});
 $('drop').addEventListener('drop',e=>{if(busy||playing){message('Appuyer sur STOP avant de téléverser.',true);return;}choose(e.dataTransfer.files);});
 window.addEventListener('dragover',e=>e.preventDefault());window.addEventListener('drop',e=>e.preventDefault());
-function upload(file,route='/api/upload',progress='uploadProgress'){return new Promise((resolve,reject)=>{const x=new XMLHttpRequest();x.open('POST',route);x.timeout=15*60*1000;x.setRequestHeader('Content-Type','application/octet-stream');x.setRequestHeader('X-Manage','1');x.setRequestHeader('X-File-Name',encodeURIComponent(file.name));x.upload.onprogress=e=>{if(e.lengthComputable)$(progress).value=e.loaded/e.total*100;};x.onload=()=>x.status>=200&&x.status<300?resolve():reject(Error(x.responseText||'Échec du transfert'));x.onerror=()=>reject(Error('Connexion interrompue'));x.ontimeout=()=>reject(Error('Délai de transfert dépassé'));x.send(file);});}
-$('send').onclick=()=>{if(playing)return;if(!picked.length){message('Choisir au moins un WAV.');return;}action(async()=>{$('uploadProgress').hidden=false;const results=[];try{for(const f of picked){message('Téléversement : '+f.name);$('uploadProgress').value=0;try{if(!/\.wav$/i.test(f.name)||f.size===0)throw Error('Fichier WAV requis');if(f.size>maxBytes)throw Error('Limite dépassée');await upload(f);results.push('✓ '+f.name);}catch(e){results.push('✗ '+f.name+' : '+e.message);}}await refresh();message(results.join('\n'),results.some(x=>x.startsWith('✗')));}finally{$('uploadProgress').hidden=true;$('files').value='';choose([]);}});};
+function transferBytes(n){return n>=1048576?(n/1048576).toLocaleString('fr-FR',{maximumFractionDigits:1})+' Mio':Math.round(n/1024).toLocaleString('fr-FR')+' Kio';}
+function transferTime(seconds){const n=Math.max(1,Math.ceil(seconds));return n<60?n+' s':Math.floor(n/60)+' min '+String(n%60).padStart(2,'0')+' s';}
+function upload(file,route='/api/upload',progress='uploadProgress',index=1,count=1){return new Promise((resolve,reject)=>{
+ const x=new XMLHttpRequest(),started=performance.now(),panel=$(progress+'Panel');let loaded=0,total=file.size,finished=false,sent=false,timer;
+ panel.hidden=false;panel.classList.remove('failed');$(progress+'Name').textContent='Fichier '+index+' / '+count+' — '+file.name;
+ $(progress+'Note').textContent='Envoi vers la carte SD…';
+ function render(){
+  const seconds=(performance.now()-started)/1000,rate=seconds>=1?loaded/seconds:0,percent=total?Math.min(100,loaded/total*100):0;
+  $(progress).value=percent;$(progress+'Percent').textContent=(percent>=100?'100':String(Math.floor(percent)))+' %';
+  $(progress+'Speed').textContent='Débit moyen : '+(rate>0?transferBytes(rate)+'/s':'—');
+  $(progress+'Eta').textContent=sent?'En attente du lecteur…':rate>0?'Reste ≈ '+transferTime((total-loaded)/rate):'Calcul du temps restant…';
+  $(progress).setAttribute('aria-valuetext',$(progress+'Percent').textContent+' — '+$(progress+'Eta').textContent);
+ }
+ function finish(error){if(finished)return;finished=true;clearInterval(timer);
+  if(!error){loaded=total;sent=true;}render();panel.classList.toggle('failed',!!error);
+  $(progress+'Eta').textContent=error?'Transfert interrompu':'Terminé';
+  $(progress+'Note').textContent=error?'Échec : '+error.message:transferBytes(total)+' — fichier enregistré par le lecteur.';
+  $(progress).setAttribute('aria-valuetext',$(progress+'Percent').textContent+' — '+(error?'Échec':'Terminé'));
+  error?reject(error):resolve();
+ }
+ render();timer=setInterval(render,1000);
+ try{
+  x.open('POST',route);x.timeout=15*60*1000;x.setRequestHeader('Content-Type','application/octet-stream');x.setRequestHeader('X-Manage','1');x.setRequestHeader('X-File-Name',encodeURIComponent(file.name));
+  x.upload.onprogress=e=>{loaded=e.loaded;if(e.lengthComputable&&e.total>0)total=e.total;sent=total>0&&loaded>=total;render();if(sent)$(progress+'Note').textContent='Envoi terminé — attente de confirmation d’écriture sur la carte SD…';};
+  x.upload.onload=()=>{loaded=total;sent=true;render();$(progress+'Note').textContent='Envoi terminé — attente de confirmation d’écriture sur la carte SD…';};
+  x.onload=()=>finish(x.status>=200&&x.status<300?null:Error(x.responseText||'Échec du transfert'));
+  x.onerror=()=>finish(Error('Connexion interrompue'));x.ontimeout=()=>finish(Error('Délai de transfert dépassé'));x.onabort=()=>finish(Error('Transfert annulé'));x.send(file);
+ }catch(error){finish(error);}
+});}
+$('send').onclick=()=>{if(playing)return;if(!picked.length){message('Choisir au moins un WAV.');return;}action(async()=>{$('uploadProgressPanel').hidden=true;const results=[];const batch=[...picked];let fileIndex=0;try{for(const f of batch){fileIndex++;message('Téléversement '+fileIndex+' / '+batch.length+' : '+f.name);try{if(!/\.wav$/i.test(f.name)||f.size===0)throw Error('Fichier WAV requis');if(f.size>maxBytes)throw Error('Limite dépassée');await upload(f,'/api/upload','uploadProgress',fileIndex,batch.length);results.push('✓ '+f.name);}catch(e){results.push('✗ '+f.name+' : '+e.message);}}await refresh();message(results.join('\n'),results.some(x=>x.startsWith('✗')));}finally{$('files').value='';choose([]);}});};
 function setConnection(ok){
  const previous=connected;connected=ok;
  $('connection').classList.toggle('online',ok);$('connectionText').textContent=ok?'Connecté':'Déconnecté';
@@ -57,7 +85,7 @@ async function checkConnection(){
  catch(e){setConnection(false);return false;}finally{clearTimeout(timer);}
 }
 async function refreshWebFiles(){const d=await json('/api/ui/files');$('webFiles').replaceChildren();for(const f of d.files){const li=document.createElement('li'),name=document.createElement('span'),size=document.createElement('span'),del=document.createElement('button');name.className='filename';name.textContent=f.name;size.className='size';size.textContent=(f.size/1024).toFixed(1)+' Kio';del.textContent='Supprimer';del.className='danger';iconButton(del,'trash','Supprimer « '+f.name+' »');del.dataset.idle='';del.onclick=()=>{if(confirm('Supprimer '+f.name+' du dossier /www ?'))action(async()=>{message(await api('/api/ui/delete',{'X-File-Name':encodeURIComponent(f.name)}));await refreshWebFiles();});};li.append(name,size,del);$('webFiles').append(li);}if(!d.files.length)$('webFiles').textContent='Dossier /www vide.';if(d.truncated)message('Liste limitée à 256 fichiers Web.');controls();}
-$('uploadHtml').onclick=()=>{const files=Array.from($('htmlFile').files);if(!files.length){message('Choisir des fichiers Web.',true);return;}action(async()=>{$('htmlProgress').hidden=false;const results=[];try{files.sort((a,b)=>(a.name.toLowerCase()==='index.html')-(b.name.toLowerCase()==='index.html'));for(const f of files){try{if(!/\.(html|css|js|png|jpe?g|gif|webp|svg|ico|json|woff2)$/i.test(f.name)||!f.size||f.size>maxHtmlBytes)throw Error('Format, taille ou fichier vide invalide');message('Téléversement : '+f.name);$('htmlProgress').value=0;await upload(f,'/api/ui/upload','htmlProgress');results.push('✓ '+f.name);}catch(e){results.push('✗ '+f.name+' : '+e.message);break;}}await refreshWebFiles();message(results.join('\n')+'\nOuvrir l’interface pour voir les changements.',results.some(x=>x.startsWith('✗')));}finally{$('htmlProgress').hidden=true;$('htmlFile').value='';}});};
+$('uploadHtml').onclick=()=>{const files=Array.from($('htmlFile').files);if(!files.length){message('Choisir des fichiers Web.',true);return;}action(async()=>{$('htmlProgressPanel').hidden=true;const results=[];let fileIndex=0;try{files.sort((a,b)=>(a.name.toLowerCase()==='index.html')-(b.name.toLowerCase()==='index.html'));for(const f of files){fileIndex++;try{if(!/\.(html|css|js|png|jpe?g|gif|webp|svg|ico|json|woff2)$/i.test(f.name)||!f.size||f.size>maxHtmlBytes)throw Error('Format, taille ou fichier vide invalide');message('Téléversement '+fileIndex+' / '+files.length+' : '+f.name);await upload(f,'/api/ui/upload','htmlProgress',fileIndex,files.length);results.push('✓ '+f.name);}catch(e){results.push('✗ '+f.name+' : '+e.message);break;}}await refreshWebFiles();message(results.join('\n')+'\nOuvrir l’interface pour voir les changements.',results.some(x=>x.startsWith('✗')));}finally{$('htmlFile').value='';}});};
 $('resetHtml').onclick=()=>{if(!confirm('Supprimer /www/index.html et revenir à la page embarquée ? Les autres fichiers sont conservés.'))return;action(async()=>{message(await api('/api/ui/reset'));location.assign('/');});};
 window.addEventListener('offline',()=>setConnection(false));
 async function monitor(){if(busy||polling||reloading)return;polling=true;try{if(await checkConnection()&&!reloading)await refreshPlayer(document.activeElement!==$('track'));}catch(e){message('Lecteur joignable, mais actualisation impossible : '+e.message,true);}finally{polling=false;}}
