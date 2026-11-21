@@ -72,3 +72,23 @@ button.icon-button,details .row button.icon-button{display:inline-flex;align-ite
 
 #queue li{display:flex;flex-wrap:nowrap;align-items:center;gap:10px}#queue .queue-name{flex:1;min-width:0;overflow-wrap:anywhere}#queue .track-duration{flex:none;margin-left:auto;font-variant-numeric:tabular-nums;white-space:nowrap;color:#65436c}
 .site-footer{text-align:center;margin-top:20px;font-size:12px}.site-footer a{display:inline-block;padding:10px 14px;color:#f2dff7;text-decoration:none;opacity:.8}.site-footer a:hover,.site-footer a:focus-visible{opacity:1;text-decoration:underline}
+
+/* Decorative mirror ball: all effects run locally, only while audio is playing. */
+.disco-hanger{height:116px;position:relative;pointer-events:none;z-index:12;display:flex;justify-content:center}
+.disco-hanger:before{content:"";position:absolute;top:0;height:29px;width:2px;background:linear-gradient(#896c35,#ffe6a0)}
+.disco-ball{position:absolute;top:28px;width:80px;height:80px;perspective:500px}
+.disco-ball:after{content:"";position:absolute;inset:-1px;border-radius:50%;background:radial-gradient(circle at 28% 22%,#fff9d966,transparent 40%,#39220088 95%);box-shadow:0 5px 15px #230c4944;pointer-events:none}
+.disco-sphere{width:100%;height:100%;transform-style:preserve-3d;animation:mirror-turn 18s linear infinite;animation-play-state:paused}
+.disco-tile{position:absolute;left:50%;top:50%;width:var(--w);height:15px;margin-left:calc(var(--w) / -2);margin-top:-7.5px;background:linear-gradient(135deg,var(--gold),#d6a83f 60%,#fff0b4);border:1px solid #815c2699;backface-visibility:hidden;transform:rotateY(var(--lon)) rotateX(var(--lat)) translateZ(39px)}
+.disco-glint{position:absolute;left:18px;top:14px;width:16px;height:16px;background:#fff8d7;clip-path:polygon(50% 0,60% 40%,100% 50%,60% 60%,50% 100%,40% 60%,0 50%,40% 40%);opacity:0;z-index:1;animation:mirror-glint 5s ease-in-out infinite;animation-play-state:paused}
+.disco-shade,.disco-reflections{position:fixed;inset:0;pointer-events:none;opacity:0;transition:opacity .8s ease;z-index:10}
+.disco-shade{background:#160825;}.disco-reflections{z-index:11;overflow:hidden}
+.disco-reflections i{position:absolute;left:var(--x);top:var(--y);width:var(--size);height:var(--size);border-radius:30%;background:radial-gradient(ellipse,#fff8d9aa,#ffe6a04d 35%,transparent 72%);animation:mirror-sweep var(--speed) ease-in-out infinite alternate;animation-delay:var(--delay);animation-play-state:paused;transform:rotate(35deg)}
+body.disco-playing .disco-shade{opacity:.16}body.disco-playing .disco-reflections{opacity:.85}
+body.disco-playing .disco-sphere,body.disco-playing .disco-glint,body.disco-playing .disco-reflections i{animation-play-state:running}
+body:not(.disco-playing) .disco-glint{visibility:hidden}
+.disco-hanger+main{margin-top:0}
+@keyframes mirror-turn{to{transform:rotateY(360deg)}}
+@keyframes mirror-glint{0%,100%{opacity:.1;transform:scale(.5)}50%{opacity:.95;transform:scale(1.15)}}
+@keyframes mirror-sweep{0%{transform:translate(-5vw,-4vh) rotate(10deg) scale(.6);opacity:.15}50%{opacity:.9}100%{transform:translate(8vw,6vh) rotate(65deg) scale(1.2);opacity:.25}}
+@media(prefers-reduced-motion:reduce){.disco-shade,.disco-reflections,.disco-glint{display:none}}
