@@ -14,6 +14,7 @@ Sélection proposée pour Disco, avec une intention : faire commencer chaque ext
 | Bonnie Tyler | Total Eclipse of the Heart | 1983 |
 | Bonnie Tyler | Holding Out for a Hero | 1984 |
 | Bronski Beat | Smalltown Boy | 1984 |
+| Catherine Lara | Nuit magique | 1986 |
 | Céline Dion | All by Myself | 1996 |
 | Corona | The Rhythm of the Night | 1994 |
 | Corynne Charby | Boule de flipper | 1986 |
@@ -42,6 +43,7 @@ Sélection proposée pour Disco, avec une intention : faire commencer chaque ext
 | Julie Pietri | Ève lève-toi | 1986 |
 | Julio Iglesias | Je n’ai pas changé | 1979 |
 | Kate Bush | Wuthering Heights | 1978 |
+| Klaus Nomi | The Cold Song | 1981 |
 | Kool & The Gang | Fresh | 1984 |
 | Laura Branigan | Self Control | 1984 |
 | Mariah Carey | Without You | 1993 |
@@ -52,6 +54,8 @@ Sélection proposée pour Disco, avec une intention : faire commencer chaque ext
 | Patrick Juvet | I Love America | 1978 |
 | Phil Collins | In the Air Tonight | 1981 |
 | Régine | La Grande Zoa | 1966 |
+| Robert Miles | Children | 1995 |
+| Rondò Veneziano | La Serenissima | 1981 |
 | Sash! | Encore une fois | 1996 |
 | Sheila & B. Devotion | Spacer | 1979 |
 | Stéphanie de Monaco | Comme un ouragan | 1986 |
