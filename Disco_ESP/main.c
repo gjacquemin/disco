@@ -231,6 +231,7 @@ cleanup:
                error?"erreur":stopped()?"stop":"fin",(unsigned long)max_read_us,(unsigned long)slow_reads);
     if(error) DISCO_LOGE(TAG,"%s",error);
     finish(error);
+    web_catalog_maintenance();
     // Startup SD configuration is handled by player_run, after audio cleanup.
 }
 void player_run(void) {
@@ -247,11 +248,15 @@ void player_run(void) {
     play_queue=xQueueCreate(1,sizeof(play_command));
     if(!play_queue) { finish("Memoire insuffisante."); start_wifi(); return; }
     DISCO_LOGI(TAG,"Volume memorise/initial=%d ; mode de selection charge depuis les reglages",current_volume());
+    int64_t startup_phase=esp_timer_get_time();
     bool mounted=mount_sd();
+    DISCO_LOGI(TAG,"Montage SD : %lld us",(long long)(esp_timer_get_time()-startup_phase));
+    startup_phase=esp_timer_get_time();
     if(mounted) unlink(AUDIO_DIRECTORY "/.upload.part"); // Cleanup BEFORE all audio/HTTP.
     char chosen[512];
     if(AUDIO_DIAGNOSTIC) { strcpy(chosen,"test interne"); err=ESP_OK; }
     else err=mounted?selection_take(chosen):ESP_FAIL;
+    DISCO_LOGI(TAG,"Selection et sauvegarde urne : %lld us",(long long)(esp_timer_get_time()-startup_phase));
     if(err!=ESP_OK) DISCO_LOGE(TAG,"Selection impossible : %s",esp_err_to_name(err));
     if(err==ESP_OK) {
         portENTER_CRITICAL(&player_lock); strcpy(status.path,chosen); portEXIT_CRITICAL(&player_lock);

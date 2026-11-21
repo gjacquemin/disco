@@ -24,6 +24,8 @@
 #define UI_PART UI_DIR "/.upload.part"
 #define UI_BACKUP UI_DIR "/.upload.bak"
 static httpd_handle_t server;
+static void catalog_work(void *arg) {(void)arg;if(!player_busy())selection_maintenance();}
+void web_catalog_maintenance(void) {if(server)httpd_queue_work(server,catalog_work,NULL);}
 extern const char page_html[];
 static esp_err_t reply(httpd_req_t *r,const char *status,const char *text) {
     httpd_resp_set_status(r,status);
@@ -34,7 +36,7 @@ static esp_err_t reply(httpd_req_t *r,const char *status,const char *text) {
 static bool name_header(httpd_req_t *r,const char *header,char path[512]) {
     char encoded[768],name[256];
     if(httpd_req_get_hdr_value_str(r,header,encoded,sizeof(encoded))!=ESP_OK || !decode_name(encoded,name)) return false;
-    return snprintf(path,512,"%s/%s",AUDIO_DIRECTORY,name)<512;
+    return snprintf(path,512,"%s/%s",selection_directory(),name)<512;
 }
 static bool authorized_request(httpd_req_t *r) {
     char value[8];
@@ -125,6 +127,7 @@ static esp_err_t ui_delete_post(httpd_req_t *r) {
     return reply(r,"200 OK","Fichier Web supprime.");
 }
 static esp_err_t ping_get(httpd_req_t *r) {
+    if(!player_busy())selection_maintenance();
     char body[128];
     snprintf(body,sizeof(body),"{\"disco\":true,\"maxHtmlBytes\":%lu}",(unsigned long)WEB_MAX_HTML_BYTES);
     httpd_resp_set_type(r,"application/json"); httpd_resp_set_hdr(r,"Cache-Control","no-store");
@@ -168,7 +171,7 @@ static esp_err_t ui_reset_post(httpd_req_t *r) {
     return reply(r,"200 OK","Page embarquee restauree.");
 }
 static esp_err_t files_get(httpd_req_t *r) {
-    DIR *d=opendir(AUDIO_DIRECTORY);
+    DIR *d=opendir(selection_directory());
     if(!d) return reply(r,"503 Service Unavailable","Carte SD ou dossier sons indisponible.");
     cJSON *root=cJSON_CreateObject(),*files=cJSON_CreateArray();
     if(!root||!files) { closedir(d); cJSON_Delete(root); cJSON_Delete(files); return reply(r,"500 Internal Server Error","Memoire insuffisante."); }
@@ -179,13 +182,16 @@ static esp_err_t files_get(httpd_req_t *r) {
         size_t n=strlen(e->d_name);
         if(e->d_name[0]=='.'||n<5||strcasecmp(e->d_name+n-4,".wav")) continue;
         char path[512]; struct stat st;
-        if(snprintf(path,sizeof(path),"%s/%s",AUDIO_DIRECTORY,e->d_name)>=(int)sizeof(path)) continue;
+        if(snprintf(path,sizeof(path),"%s/%s",selection_directory(),e->d_name)>=(int)sizeof(path)) continue;
         if(stat(path,&st)||!S_ISREG(st.st_mode)) continue;
         if(count++>=1024) { cJSON_AddBoolToObject(root,"truncated",true); break; }
         cJSON *item=cJSON_CreateObject();
         if(!item) break;
         cJSON_AddStringToObject(item,"name",e->d_name);
         cJSON_AddNumberToObject(item,"size",st.st_size);
+        uint32_t duration=selection_duration(path);
+        if(duration)cJSON_AddNumberToObject(item,"durationMs",duration);
+        else cJSON_AddNullToObject(item,"durationMs");
         cJSON_AddItemToArray(files,item);
     }
     closedir(d);
@@ -193,6 +199,51 @@ static esp_err_t files_get(httpd_req_t *r) {
     if(!json) return reply(r,"500 Internal Server Error","Memoire insuffisante.");
     httpd_resp_set_type(r,"application/json"); httpd_resp_set_hdr(r,"Cache-Control","no-store");
     esp_err_t result=httpd_resp_send(r,json,HTTPD_RESP_USE_STRLEN); free(json); return result;
+}
+static esp_err_t playlists_get(httpd_req_t *r) {
+    cJSON *root=cJSON_CreateObject(); if(!root) return ESP_FAIL;
+    cJSON_AddStringToObject(root,"active",selection_playlist());
+    cJSON *list=cJSON_AddArrayToObject(root,"playlists");
+    cJSON_AddItemToArray(list,cJSON_CreateString(""));
+    DIR *d=opendir(AUDIO_DIRECTORY); struct dirent *e;
+    if(d) { while((e=readdir(d))) {
+        if(e->d_name[0]=='.' || !strcasecmp(e->d_name,"www") || strlen(e->d_name)>=128) continue;
+        char path[512]; struct stat st; snprintf(path,sizeof(path),"%s/%s",AUDIO_DIRECTORY,e->d_name);
+        if(!stat(path,&st) && S_ISDIR(st.st_mode)) cJSON_AddItemToArray(list,cJSON_CreateString(e->d_name));
+    } closedir(d); }
+    char *json=cJSON_PrintUnformatted(root); cJSON_Delete(root); if(!json) return ESP_FAIL;
+    httpd_resp_set_type(r,"application/json"); httpd_resp_set_hdr(r,"Cache-Control","no-store");
+    esp_err_t err=httpd_resp_send(r,json,HTTPD_RESP_USE_STRLEN); free(json); return err;
+}
+static esp_err_t playlist_post(httpd_req_t *r) {
+    if(!authorized_request(r)) return reject(r,"403 Forbidden","Requete refusee.");
+    if(player_busy()) return reject(r,"409 Conflict","Arretez la lecture avant de changer de playlist.");
+    char encoded[768],name[128]; size_t n=0;
+    if(httpd_req_get_hdr_value_str(r,"X-Playlist",encoded,sizeof(encoded))!=ESP_OK) return reject(r,"400 Bad Request","Playlist manquante.");
+    // A dash is the explicit root selector; folder names use an encoded prefix.
+    if(!strcmp(encoded,"root")) name[0]=0;
+    else {
+        if(strncmp(encoded,"dir:",4)) return reject(r,"400 Bad Request","Playlist invalide.");
+        const char *p=encoded+4;
+        while(*p) { unsigned char c=*p++;
+            if(c=='%') { if(!p[0]||!p[1]||hexval(p[0])<0||hexval(p[1])<0) return reject(r,"400 Bad Request","Encodage invalide."); c=(hexval(p[0])<<4)|hexval(p[1]); p+=2; }
+            if(!c || n>=sizeof(name)-1) return reject(r,"400 Bad Request","Playlist invalide."); name[n++]=c;
+        } name[n]=0;
+    }
+    if(selection_playlist_set(name)!=ESP_OK) return reply(r,"400 Bad Request","Playlist indisponible ou sauvegarde impossible.");
+    return reply(r,"200 OK","Playlist active memorisee. Aucun son lance.");
+}
+static esp_err_t playlist_manage_post(httpd_req_t *r) {
+    if(!authorized_request(r))return reject(r,"403 Forbidden","Requete refusee.");
+    if(player_busy())return reject(r,"409 Conflict","Arretez la lecture avant modification.");
+    char body[1024];if(r->content_len<=0||r->content_len>=sizeof(body))return reject(r,"400 Bad Request","Requete invalide.");
+    size_t done=0;while(done<r->content_len){int n=httpd_req_recv(r,body+done,r->content_len-done);if(n<=0)return ESP_FAIL;done+=n;}body[done]=0;
+    cJSON *j=cJSON_Parse(body);if(!j)return reject(r,"400 Bad Request","JSON invalide.");
+    cJSON *op=cJSON_GetObjectItemCaseSensitive(j,"op"),*name=cJSON_GetObjectItemCaseSensitive(j,"name"),*file=cJSON_GetObjectItemCaseSensitive(j,"file");
+    esp_err_t err=ESP_ERR_INVALID_ARG;
+    if(cJSON_IsString(op)&&cJSON_IsString(name)&&cJSON_IsString(file))err=selection_manage(op->valuestring,name->valuestring,file->valuestring);
+    cJSON_Delete(j);
+    return err==ESP_OK?reply(r,"200 OK","Modification terminee."):reply(r,"400 Bad Request","Modification impossible ou incomplete. Verifiez les noms, les doublons et la carte SD. La suppression refuse les dossiers contenant autre chose que des WAV. Actualisez la liste.");
 }
 static esp_err_t urn_get(httpd_req_t *r) {
     cJSON *root=selection_status();
@@ -207,6 +258,17 @@ static esp_err_t urn_reset_post(httpd_req_t *r) {
     if(selection_reset()!=ESP_OK) return reply(r,"500 Internal Server Error","Impossible de reconstruire ou sauvegarder l'urne.");
     return reply(r,"200 OK","Urne reinitialisee et melangee. Aucun son lance.");
 }
+static esp_err_t urn_first_post(httpd_req_t *r) {
+    char path[512];
+    if(!authorized_request(r)) return reject(r,"403 Forbidden","Requete refusee.");
+    if(player_busy()) return reject(r,"409 Conflict","Arretez la lecture avant de modifier l'urne.");
+    if(!name_header(r,"X-File-Name",path)) return reject(r,"400 Bad Request","Nom WAV invalide.");
+    esp_err_t err=selection_reset_first(path);
+    if(err==ESP_ERR_NOT_FOUND) return reply(r,"404 Not Found","Morceau absent ou WAV incompatible.");
+    if(err!=ESP_OK) return reply(r,"500 Internal Server Error","Impossible de sauvegarder l'urne.");
+    if(selection_set_mode(PLAYBACK_URN)!=ESP_OK) return reply(r,"500 Internal Server Error","Urne sauvegardee, mais activation du mode Urne impossible.");
+    return reply(r,"200 OK","Urne regeneree : morceau choisi en premier. Mode Urne active. Aucun son lance.");
+}
 static esp_err_t changed(httpd_req_t *r,const char *status,const char *message) {
     if(selection_reset()!=ESP_OK) return reply(r,"500 Internal Server Error",
         "Fichier modifie, mais echec de reinitialisation de l'urne. Utilisez Reinitialiser l'urne et verifiez la SD/NVS.");
@@ -219,7 +281,7 @@ static esp_err_t upload_post(httpd_req_t *r) {
     if(!name_header(r,"X-File-Name",target)) return reject(r,"400 Bad Request","Nom WAV invalide.");
     if(r->content_len==0||r->content_len>WEB_MAX_FILE_BYTES) return reject(r,"413 Payload Too Large","Taille du fichier hors limite.");
     if(!stat(target,&st)) return reject(r,"409 Conflict","Ce nom existe deja. Renommez ou supprimez le fichier existant.");
-    const char *temp=AUDIO_DIRECTORY "/.upload.part";
+    char temp[512]; snprintf(temp,sizeof(temp),"%s/.upload.part",selection_directory());
     FILE *f=fopen(temp,"wb");
     if(!f) return reject(r,"507 Insufficient Storage","Impossible d'ecrire sur la SD.");
     char buf[4096]; size_t remaining=r->content_len; unsigned timeouts=0;
@@ -339,7 +401,7 @@ static esp_err_t app_asset_get(httpd_req_t *r) {
 void web_start(void) {
     if(server) return;
     // May run during playback in FAST mode; never mutate SD here.
-    httpd_config_t cfg=HTTPD_DEFAULT_CONFIG(); cfg.stack_size=12288; cfg.max_uri_handlers=24; cfg.uri_match_fn=httpd_uri_match_wildcard;
+    httpd_config_t cfg=HTTPD_DEFAULT_CONFIG(); cfg.stack_size=12288; cfg.max_uri_handlers=28; cfg.uri_match_fn=httpd_uri_match_wildcard;
     cfg.recv_wait_timeout=10; cfg.send_wait_timeout=10; cfg.lru_purge_enable=true;
     if(httpd_start(&server,&cfg)!=ESP_OK) { server=NULL; DISCO_LOGE("WEB","Echec demarrage"); return; }
     const httpd_uri_t routes[]={
@@ -358,6 +420,10 @@ void web_start(void) {
         {.uri="/www/*",.method=HTTP_GET,.handler=ui_asset_get},
         {.uri="/api/mode",.method=HTTP_POST,.handler=mode_post},
         {.uri="/api/urn",.method=HTTP_GET,.handler=urn_get},
+        {.uri="/api/playlist/manage",.method=HTTP_POST,.handler=playlist_manage_post},
+        {.uri="/api/playlists",.method=HTTP_GET,.handler=playlists_get},
+        {.uri="/api/playlist",.method=HTTP_POST,.handler=playlist_post},
+        {.uri="/api/urn/first",.method=HTTP_POST,.handler=urn_first_post},
         {.uri="/api/urn/reset",.method=HTTP_POST,.handler=urn_reset_post},
         {.uri="/api/player",.method=HTTP_GET,.handler=player_get},
         {.uri="/api/play",.method=HTTP_POST,.handler=play_post},
@@ -371,5 +437,6 @@ void web_start(void) {
     for(unsigned i=0;i<sizeof(routes)/sizeof(routes[0]);i++) {
         if(httpd_register_uri_handler(server,&routes[i])!=ESP_OK) { httpd_stop(server); server=NULL; DISCO_LOGE("WEB","Echec routes"); return; }
     }
+    web_catalog_maintenance();
     DISCO_LOGI("WEB","Serveur disponible sur http://ADRESSE_IP/ (port 80)");
 }

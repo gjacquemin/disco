@@ -323,3 +323,43 @@ Le port série annonce l’import ou son échec sans afficher le mot de passe. L
 ### Import Wi-Fi différé
 
 Avec `WIFI_FAST=1`, la connexion pendant le morceau utilise les identifiants déjà mémorisés ou compilés. Si une tentative a été lancée, les identifiants importés après le morceau seront utilisés au prochain redémarrage, sans couper la connexion actuelle. Avec `WIFI_FAST=0`, ou si aucun SSID n’était configuré, l’import a lieu avant la première tentative et les nouveaux identifiants sont utilisés immédiatement. Sans morceau lisible, l’import est effectué sans attendre. Une coupure avant la fin du morceau empêche cet import : laisser terminer une fois le morceau pour mémoriser le nouveau réseau.
+
+### Choisir le premier morceau de l’urne
+
+Dans la liste des fichiers, le bouton flèche vers le haut devant chaque morceau régénère toute l’urne, place ce morceau en premier et mélange les autres sans doublon. Il active et mémorise le mode Urne. Aucun son n’est lancé : le morceau sera joué au prochain allumage. Arrêter la lecture avant cette action. Cette fonction nécessite le firmware mis à jour ; remplacer uniquement les fichiers Web ne suffit pas.
+
+### Playlists par dossier
+
+Créez des dossiers directement à la racine de la carte SD, par exemple `Quotidien/`, `Soiree/` et `Weekend/`, puis placez les WAV dedans. Les fichiers à la racine restent utilisables dans « Racine de la carte SD ». Le dossier `www` est réservé à l’interface. Les sous-dossiers imbriqués ne sont pas parcourus. Noms de dossiers : moins de 128 octets UTF-8, sans séparateurs de chemin ni caractères réservés.
+
+Dans « Mode de fonctionnement », arrêtez la lecture puis choisissez la playlist active. Ce choix est mémorisé et s’applique au prochain allumage ; il ne lance aucun son. Chaque dossier possède une urne persistante indépendante : changer de playlist puis revenir conserve la progression. Le réglage Random / Urne reste commun. L’ajout, suppression ou renommage de WAV régénère uniquement l’urne du dossier actif. Les téléversements et écoutes manuelles concernent aussi ce dossier.
+
+Le bouton ↑ régénère l’urne de la playlist active avec le morceau choisi en premier. Les dossiers peuvent être créés, renommés et supprimés depuis l’interface Web. Si un dossier actif est retiré ou renommé hors ligne, la lecture échoue : choisissez un dossier existant dans l’interface. Une playlist vide ne produit aucun son.
+
+Cette évolution nécessite de reflasher le firmware et de mettre à jour les fichiers `www` sur la carte SD.
+
+### Gérer les playlists depuis le Web
+
+À l’arrêt, utilisez Créer, Renommer ou Supprimer sous le sélecteur de playlist. La racine ne peut pas être renommée ou supprimée. Renommer conserve l’ordre et le curseur de l’urne ; supprimer demande confirmation et efface les WAV du dossier, puis le dossier. Le lecteur revient à la racine. La suppression est refusée si le dossier contient des sous-dossiers ou des fichiers autres que des WAV.
+
+Le bouton Déplacer de chaque morceau ouvre un sélecteur de destination. Aucun fichier existant n’est écrasé. Les urnes source et destination sont régénérées. Aucune de ces actions ne lance de son.
+
+Les changements sur la SD et la mémoire interne ne forment pas une transaction unique : évitez de couper l’alimentation pendant une modification. Une suppression interrompue peut laisser un dossier partiellement vidé. Après une erreur, actualisez et vérifiez le contenu.
+
+### Démarrage accéléré : catalogue des WAV
+
+Chaque playlist possède un fichier technique `.disco-catalog.bin`, créé automatiquement lors du premier parcours complet. Aux démarrages suivants, le lecteur charge et contrôle la structure de cet index, sans parcourir le dossier ni vérifier les métadonnées de tous les fichiers. Le morceau sélectionné est ouvert normalement pour la lecture. Le tirage reste sauvegardé avant le son.
+
+Un index absent, tronqué, incohérent ou ne correspondant plus au dossier déclenche un parcours complet. Les modifications Web reconstruisent le catalogue concerné. Les modifications effectuées depuis un ordinateur sont prises en compte lors de la vérification complète différée après la lecture. Un remplacement conservant exactement nom, taille et date ne peut pas être détecté par ces métadonnées : régénérez alors l’urne depuis le Web ou supprimez `.disco-catalog.bin`. Les WAV incompatibles peuvent entraîner un parcours complet à chaque démarrage ; retirez-les pour bénéficier du cache.
+
+Le cache est facultatif : si son écriture échoue, la sélection reste possible avec un parcours complet. Les fichiers `.disco-catalog.bin` et `.disco-catalog.tmp` sont gérés automatiquement et supprimés avec leur playlist. Le premier démarrage reste plus long. Les logs indiquent les temps du montage SD et de la sélection/sauvegarde de l’urne, en microsecondes ; aucun gain chiffré n’est garanti sans mesure sur la carte.
+
+La liste des WAV affiche la taille et la durée (minutes:secondes). Les durées sont calculées lors du parcours des WAV puis stockées dans le catalogue : afficher la liste n’ouvre pas à nouveau tous les fichiers audio pendant la lecture. Une durée inconnue ou un WAV incompatible apparaît avec « — ». Le nouveau format de catalogue est reconstruit automatiquement une fois après cette mise à jour.
+
+### Démarrage rapide et vérification différée
+
+Avant le son, le lecteur charge le catalogue, tire un morceau, valide uniquement son en-tête WAV puis sauvegarde le tirage en NVS. Un catalogue manquant, corrompu ou vide déclenche un parcours complet. Si le morceau choisi manque ou est incompatible, le catalogue est reconstruit et un nouveau tirage est tenté une fois, sans consommer le tirage invalide.
+
+La vérification complète s’exécute après la lecture (ou STOP), dans la tâche du serveur Web, lorsqu’aucune lecture n’est active. Elle conserve la progression de l’urne si la liste des morceaux n’a pas changé ; sinon elle la reconstruit. Elle nécessite que le serveur Wi-Fi soit démarré. Si une autre lecture a déjà commencé, elle est reportée ; un prochain contrôle de connexion de la page la déclenche à l’arrêt. Les modifications Web continuent de mettre à jour les catalogues immédiatement. Une coupure avant la vérification différée peut donc reporter la détection des ajouts faits depuis un ordinateur au prochain cycle complet.
+
+Les logs BOOT distinguent désormais : catalogue (cache ou reconstruction), chargement de l’urne et tirage, vérification du WAV choisi, sauvegarde NVS avant audio, éventuelle reconstruction de secours, et vérification complète après lecture. Le montage SD conserve son chronométrage séparé. Les temps sont en microsecondes.
