@@ -48,6 +48,7 @@ Sélection proposée pour Disco, avec une intention : faire commencer chaque ext
 | Laura Branigan | Self Control | 1984 |
 | Mariah Carey | Without You | 1993 |
 | Michael Sembello | Maniac | 1983 |
+| Ministry | I Wanted To Tell Her | 1983 |
 | Mireille Mathieu | Bravo tu as gagné | 1981 |
 | Mylène Farmer | Désenchantée | 1991 |
 | Mylène Farmer | Sans contrefaçon | 1987 |
