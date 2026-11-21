@@ -1,0 +1,38 @@
+{
+  "01_Fond": {
+    "valid": true,
+    "solids": 1,
+    "volume_mm3": 21115.8,
+    "dimensions_mm": [
+      88.4,
+      73.4,
+      20.0
+    ],
+    "stl_triangles": 4868,
+    "stl_edges_not_shared_twice": 0
+  },
+  "02_Couvercle_face_exterieure_sur_plateau": {
+    "valid": true,
+    "solids": 1,
+    "volume_mm3": 13291.9,
+    "dimensions_mm": [
+      88.4,
+      73.4,
+      14.1
+    ],
+    "stl_triangles": 3284,
+    "stl_edges_not_shared_twice": 0
+  },
+  "00_Gabarit_carte": {
+    "valid": true,
+    "solids": 1,
+    "volume_mm3": 3466.1,
+    "dimensions_mm": [
+      88.4,
+      73.4,
+      8.0
+    ],
+    "stl_triangles": 3068,
+    "stl_edges_not_shared_twice": 0
+  }
+}
