@@ -64,6 +64,7 @@ Sélection proposée pour Disco, avec une intention : faire commencer chaque ext
 | The Pointer Sisters | I'm So Excited | 1982 |
 | The Weather Girls | It's Raining Men | 1982 |
 | Thierry Hazard | Le Jerk ! | 1990 |
+| Véronique Sanson | Vancouver | 1976 |
 | Whitney Houston | I Wanna Dance With Somebody | 1987 |
 | Whitney Houston | I Will Always Love You | 1992 |
 
