@@ -4,8 +4,13 @@ cd "$(dirname "$0")"
 # Active nullglob (évite une erreur si aucun .wav) et nocaseglob (.wav ou .WAV)
 shopt -s nullglob nocaseglob
 
-# Création des dossiers de destination locaux
-mkdir -p "SD" "MP3"
+# Réglages de normalisation sonore (norme EBU R128)
+CIBLE_LUFS="-14"   # Niveau cible en LUFS (ex: -14 pour standard, -12 pour plus fort)
+CIBLE_TP="-1.0"    # Plafond True Peak en dBTP (évite la saturation)
+CIBLE_LRA="11"     # Plage dynamique cible (Loudness Range)
+
+# Création des dossiers de destination locaux dans sounds/
+mkdir -p "sounds/original" "sounds/norm_stereo" "sounds/norm_mono" "sounds/mp3"
 
 # Fonction de nettoyage des noms pour compatibilité FAT32 stricte
 nettoyer_nom_fat32() {
@@ -45,12 +50,43 @@ nettoyer_nom_fat32() {
     printf '%s' "$nom"
 }
 
+# Fonction réutilisable de normalisation LUFS double passe
+normaliser_loudnorm() {
+    local source="$1"
+    local destination="$2"
+    local canaux="$3" # 1 pour mono, 2 pour stéréo
+    local label="$4"
+
+    local stats in_i in_tp in_lra in_thresh offset
+    stats=$(ffmpeg -i "$source" -vn -ac "$canaux" -af "loudnorm=I=${CIBLE_LUFS}:TP=${CIBLE_TP}:LRA=${CIBLE_LRA}:print_format=json" -f null - 2>&1 | awk '/\{/,/\}/')
+
+    in_i=$(printf '%s' "$stats" | grep '"input_i"' | sed -E 's/.*"input_i" : "([^"]+)".*/\1/')
+    in_tp=$(printf '%s' "$stats" | grep '"input_tp"' | sed -E 's/.*"input_tp" : "([^"]+)".*/\1/')
+    in_lra=$(printf '%s' "$stats" | grep '"input_lra"' | sed -E 's/.*"input_lra" : "([^"]+)".*/\1/')
+    in_thresh=$(printf '%s' "$stats" | grep '"input_thresh"' | sed -E 's/.*"input_thresh" : "([^"]+)".*/\1/')
+    offset=$(printf '%s' "$stats" | grep '"target_offset"' | sed -E 's/.*"target_offset" : "([^"]+)".*/\1/')
+
+    if [ -n "$in_i" ] && [ -n "$in_tp" ] && [ -n "$in_lra" ] && [ -n "$in_thresh" ] && [ -n "$offset" ]; then
+        if ffmpeg -i "$source" -map_metadata -1 -vn -ar 44100 -ac "$canaux" \
+            -af "loudnorm=I=${CIBLE_LUFS}:TP=${CIBLE_TP}:LRA=${CIBLE_LRA}:measured_I=${in_i}:measured_TP=${in_tp}:measured_LRA=${in_lra}:measured_thresh=${in_thresh}:offset=${offset}:linear=true" \
+            -c:a pcm_s16le -fflags +bitexact -flags:a +bitexact "$destination" -loglevel error; then
+            echo "  -> ${label} égalisé à ${CIBLE_LUFS} LUFS (mesuré : ${in_i} LUFS)"
+            return 0
+        else
+            echo "ERREUR : Échec de la passe 2 loudnorm (${label}) pour '$source'." >&2
+            return 1
+        fi
+    else
+        echo "ERREUR : Impossible d'analyser le niveau LUFS (${label}) de '$source'." >&2
+        return 1
+    fi
+}
+
 # Fonction réutilisable de nettoyage des fichiers cachés macOS dans un dossier cible
 nettoyer_caches_macos() {
     local cible="$1"
     [ -d "$cible" ] || return
 
-    # Fusionne/supprime les fichiers AppleDouble (._*) avec l'outil natif macOS
     if command -v dot_clean >/dev/null 2>&1; then
         dot_clean -m "$cible" 2>/dev/null
     fi
@@ -84,54 +120,73 @@ for fichier in *.wav; do
     nom_brut="${fichier%.*}"
     nom_propre=$(nettoyer_nom_fat32 "$nom_brut")
 
-    fichier_sd="SD/${nom_propre}.wav"
-    fichier_mp3="MP3/${nom_propre}.mp3"
+    fichier_orig="sounds/original/${nom_propre}.wav"
+    fichier_norm_stereo="sounds/norm_stereo/${nom_propre}.wav"
+    fichier_norm_mono="sounds/norm_mono/${nom_propre}.wav"
+    fichier_mp3="sounds/mp3/${nom_propre}.mp3"
 
     echo "Traitement de : $fichier"
     if [ "$nom_brut" != "$nom_propre" ]; then
         echo "  -> Nom nettoyé pour FAT32 : ${nom_propre}"
     fi
 
-    # Conversion en WAV 16 bits, 44.1 kHz, stéréo sans métadonnées
-    if [ -e "$fichier_sd" ]; then
-        echo "ERREUR : Le fichier '$fichier_sd' existe déjà. Conversion WAV ignorée." >&2
+    # 1A. Conversion en WAV stéréo original (non normalisé, sans métadonnées)
+    if [ -e "$fichier_orig" ]; then
+        echo "ERREUR : Le fichier '$fichier_orig' existe déjà. Conversion ignorée." >&2
     else
-        if ffmpeg -i "$fichier" -map_metadata -1 -vn -ar 44100 -ac 2 -c:a pcm_s16le -fflags +bitexact -flags:a +bitexact "$fichier_sd" -loglevel error; then
-            echo "  -> WAV converti et nettoyé (sans tags) avec succès dans SD/"
+        if ffmpeg -i "$fichier" -map_metadata -1 -vn -ar 44100 -ac 2 -c:a pcm_s16le -fflags +bitexact -flags:a +bitexact "$fichier_orig" -loglevel error; then
+            echo "  -> WAV original (stéréo non normalisé) enregistré dans sounds/original/"
         else
-            echo "ERREUR : Échec de la conversion WAV pour '$fichier'." >&2
+            echo "ERREUR : Échec de la conversion WAV original pour '$fichier'." >&2
             continue
         fi
     fi
 
-    # Conversion du fichier SD/ en MP3 128 kbits
-    if [ ! -e "$fichier_sd" ]; then
-        echo "ERREUR : Le fichier source '$fichier_sd' est introuvable pour la conversion MP3." >&2
+    # 1B. Conversion en WAV stéréo normalisé LUFS
+    if [ -e "$fichier_norm_stereo" ]; then
+        echo "ERREUR : Le fichier '$fichier_norm_stereo' existe déjà. Conversion norm_stereo ignorée." >&2
+    else
+        normaliser_loudnorm "$fichier" "$fichier_norm_stereo" 2 "WAV stéréo (sounds/norm_stereo/)" || continue
+    fi
+
+    # 1C. Conversion en WAV mono normalisé LUFS
+    if [ -e "$fichier_norm_mono" ]; then
+        echo "ERREUR : Le fichier '$fichier_norm_mono' existe déjà. Conversion norm_mono ignorée." >&2
+    else
+        normaliser_loudnorm "$fichier" "$fichier_norm_mono" 1 "WAV mono (sounds/norm_mono/)" || continue
+    fi
+
+    # 1D. Conversion en MP3 128 kbits depuis le fichier stéréo normalisé
+    if [ ! -e "$fichier_norm_stereo" ]; then
+        echo "ERREUR : Le fichier source '$fichier_norm_stereo' est introuvable pour la conversion MP3." >&2
         continue
     fi
 
     if [ -e "$fichier_mp3" ]; then
         echo "ERREUR : Le fichier '$fichier_mp3' existe déjà. Conversion MP3 ignorée." >&2
     else
-        if ffmpeg -i "$fichier_sd" -map_metadata -1 -b:a 128k "$fichier_mp3" -loglevel error; then
-            echo "  -> MP3 converti avec succès dans MP3/"
+        if ffmpeg -i "$fichier_norm_stereo" -map_metadata -1 -b:a 128k "$fichier_mp3" -loglevel error; then
+            echo "  -> MP3 converti avec succès dans sounds/mp3/"
             if command -v trash >/dev/null 2>&1; then
                 trash "$fichier"
-                echo "  -> Fichier original '$fichier' envoyé à la corbeille."
+                echo "  -> Fichier source '$fichier' envoyé à la corbeille."
             else
                 rm -f "$fichier"
-                echo "  -> Fichier original '$fichier' supprimé (commande 'trash' introuvable)."
+                echo "  -> Fichier source '$fichier' supprimé (commande 'trash' introuvable)."
             fi
         else
-            echo "ERREUR : Échec de la conversion MP3 pour '$fichier_sd'. L'original n'a pas été supprimé." >&2
+            echo "ERREUR : Échec de la conversion MP3 pour '$fichier_norm_stereo'. Le fichier source n'a pas été supprimé." >&2
         fi
     fi
 done
 
 echo ""
 echo "Nettoyage des fichiers cachés macOS dans les dossiers locaux..."
-nettoyer_caches_macos "SD"
-nettoyer_caches_macos "MP3"
+nettoyer_caches_macos "sounds"
+nettoyer_caches_macos "sounds/original"
+nettoyer_caches_macos "sounds/norm_stereo"
+nettoyer_caches_macos "sounds/norm_mono"
+nettoyer_caches_macos "sounds/mp3"
 
 # ==============================================================================
 # 2. DÉTECTION DE LA CARTE SD ET COPIE SANS ÉCRASEMENT (MACOS)
@@ -141,7 +196,6 @@ echo "Recherche d'une carte SD ou d'un volume externe dans /Volumes..."
 
 volumes_externes=()
 for vol in /Volumes/*; do
-    # Ignorer le disque système Macintosh HD (lien symbolique vers /)
     if [ -d "$vol" ] && [ ! -L "$vol" ]; then
         volumes_externes+=("$vol")
     fi
@@ -168,22 +222,20 @@ else
     fi
 fi
 
-# Si un volume a été identifié, demande de confirmation avant copie
 if [ -n "$carte_sd" ]; then
     echo ""
-    read -r -p "Appuyez sur [Entrée] pour copier le contenu de 'SD/' vers '$carte_sd' (ou Ctrl+C pour annuler)..."
+    read -r -p "Appuyez sur [Entrée] pour copier le contenu de 'sounds/norm_mono/' vers '$carte_sd' (ou Ctrl+C pour annuler)..."
 
-    fichiers_a_copier=(SD/*.wav)
+    fichiers_a_copier=(sounds/norm_mono/*.wav)
     if [ ${#fichiers_a_copier[@]} -eq 0 ]; then
-        echo "Aucun fichier WAV à copier dans le dossier 'SD/'."
+        echo "Aucun fichier WAV à copier dans le dossier 'sounds/norm_mono/'."
     else
-        echo "Copie des fichiers WAV vers $carte_sd (sans écrasement)..."
+        echo "Copie des fichiers WAV mono normalisés vers $carte_sd (sans écrasement)..."
         for fichier_sd in "${fichiers_a_copier[@]}"; do
             [ -f "$fichier_sd" ] || continue
             nom_fichier=$(basename "$fichier_sd")
             destination="$carte_sd/$nom_fichier"
 
-            # Vérification de l'existence sur la carte SD avant toute copie
             if [ -e "$destination" ]; then
                 echo "ERREUR : Le fichier '$nom_fichier' existe déjà sur la carte SD. Copie ignorée." >&2
             else
@@ -198,7 +250,6 @@ if [ -n "$carte_sd" ]; then
         echo "Nettoyage des fichiers cachés macOS sur la carte SD..."
         nettoyer_caches_macos "$carte_sd"
         
-        # Synchronisation de l'écriture sur le disque avant éjection
         sync
         
         echo "Démontage de la carte SD ($carte_sd)..."

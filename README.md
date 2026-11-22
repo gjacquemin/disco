@@ -1,67 +1,247 @@
-# Disco — Lecteur audio aléatoire
+# Disco — Installation interactive pour les toilettes
 
-Lecteur pour **ESP32-A1S Audio Kit V2.2**, développé pour **Arduino IDE**. À chaque mise sous tension, il joue un seul WAV depuis la carte microSD, puis s'arrête. Une interface Web locale permet de gérer les fichiers, consulter l'urne, écouter un titre et régler le volume.
+À chaque allumage de la lumière, une boule à facettes tourne et un extrait musical démarre. Le morceau est tiré au sort dans une playlist préparée à l’avance. L’extinction coupe l’ensemble ; au prochain allumage, un nouveau tirage a lieu, sans reprise du morceau interrompu.
 
-## Fonctionnalités
+Disco repose sur une **ESP32-A1S Audio Kit V2.2**, une carte microSD et des enceintes amplifiées. Le programme se compile avec **Arduino IDE et le cœur ESP32 2.0.17**. Une interface Web locale gère les sons, les playlists, le mode de tirage et le volume.
 
-- Lecture dès le démarrage, sans attendre le réseau.
-- Deux modes sélectionnables depuis le Web et mémorisés : Urne persistante ou Random.
-- Aucune reprise après coupure : chaque morceau commence au début.
-- **Wi-Fi fast activé par défaut** : connexion dès que la lecture a commencé.
-- Interface Web sans Internet ni dépendance à un CDN : envoi, suppression, renommage, écoute manuelle, arrêt, volume mémorisé.
-- WAV mono dupliqués sur les deux sorties ; WAV stéréo avec canaux gauche et droit conservés sur le jack EARPHONES.
+Le moteur et le projecteur sont alimentés avec l’installation : **la carte audio ne commande pas leur rotation ni leur éclairage**. Elle lit un seul fichier WAV jusqu’à sa fin, puis s’arrête. La durée de l’extrait dépend donc du fichier préparé, sans minuterie ni découpage automatique.
 
-## Documentation
+## Sommaire
 
-- [HARDWARE.md](HARDWARE.md) : matériel, câblage, alimentation, interrupteurs DIP et profils de codec.
-- [PLAYLIST.md](PLAYLIST.md) : sélection musicale recommandée et préparation des extraits.
-- [Process_WAV_for_SD_macOS.command](Process_WAV_for_SD_macOS.command) : conversion et copie des WAV depuis macOS.
+- [Installation physique](#installation-physique)
+- [Préparation des sons](#préparation-des-sons)
+- [Préparation de la carte SD](#préparation-de-la-carte-sd)
+- [Installation du programme](#installation-du-programme)
+- [Réglages du lecteur](#réglages-du-lecteur)
+- [Wi-Fi et identifiants sur la carte SD](#wi-fi-et-identifiants-sur-la-carte-sd)
+- [Playlists et modes de tirage](#playlists-et-modes-de-tirage)
+- [Interface Web](#interface-web)
+- [Mise à jour de l’interface Web](#mise-à-jour-de-linterface-web)
+- [Démarrage et coupures de courant](#démarrage-et-coupures-de-courant)
+- [Diagnostic et vérification](#diagnostic-et-vérification)
+- [Organisation du projet et publication](#organisation-du-projet-et-publication)
+- [Licence](#licence)
 
-## Préparer la carte SD
+## Installation physique
 
-1. Formater en **FAT32**, une partition principale ; MBR recommandé. Pas d'exFAT et aucun formatage automatique par le programme. Une carte de 64 Go est utilisable si elle est bien formatée en FAT32 ; sauvegarder son contenu avant tout formatage.
-2. Copier les fichiers WAV **directement à la racine** de la carte, sans dossier.
-3. Insérer la carte avant d'allumer le lecteur. Pas de remplacement à chaud.
+### Matériel
 
-Exemples : `Bonjour.wav`, `Ambiance foret.wav`, `Musique_03.wav`. Aucun numéro ni préfixe n'est imposé. Les anciens fichiers placés dans un sous-dossier doivent être déplacés à la racine : les sous-dossiers ne sont pas parcourus.
+Les références ci-dessous correspondent au montage retenu. Les prix sont indicatifs et dépendent du vendeur ; ils ne constituent pas des tarifs vérifiés en temps réel.
 
-Format accepté : **WAV PCM entier signé 16 bits, mono ou stéréo, 44 100 ou 48 000 Hz**. MP3, 24 bits, float et WAV extensible ne sont pas acceptés. Les fichiers invalides sont exclus de l'urne.
+| Composant | Référence retenue | Rôle | Prix indicatif | Lien |
+|---|---|---|---|---|
+| Carte audio | ESP32-A1S Audio Kit | Lit les WAV et pilote son codec audio AC101 ou ES8388 | 30 € | [Référence Amazon](https://www.amazon.fr/dp/B0DF58DCQ7) |
+| Stockage | microSD SanDisk 64 Go | Stocke les fichiers audio | 20 € | [Référence Amazon](https://www.amazon.fr/dp/B0B7NXBM6P) |
+| Enceintes | Creative Pebble 2.0 | Enceintes amplifiées avec entrée audio mini-jack et alimentation USB | 25 € | [Référence Amazon](https://www.amazon.fr/dp/B0791J2658) |
+| Câble USB | USB-A vers micro-USB | Relie la carte audio à l'alimentation | 6 € | [Référence Amazon](https://www.amazon.fr/dp/B0C6HYYTMM?ref=ppx_yo2ov_dt_b_fed_asin_title) |
+| Alimentation | Chargeur secteur double USB | Alimente la carte et les enceintes via deux ports USB | 10 € | [Référence Amazon](https://www.amazon.fr/dp/B0BXD4XRM2) |
+| Multiprise | Multiprise 3 prises | Permet de brancher les équipements | 10 € | [Référence Amazon](https://www.amazon.fr/PremiumCord-PP3-03-Blanc/dp/B084395JDG/ref=sxin_12_pa_sp_search_thematic_sspa) |
+| Boule à facettes | Eurolite Mirror Ball 30 cm Gold | Boule à facettes | 40 € | [Référence Thomann](https://www.thomann.fr/eurolite_mirror_ball_30_cm_gold.htm) |
+| Moteur | Eurolite MD-1030 Mirror Ball Motor 3 kg | Moteur rotatif pour boule à facettes | 15 € | [Référence Thomann](https://www.thomann.fr/eurolite_md_1030_mirror_ball_motor_3kg.htm) |
+| Lumière | Eurolite LED PST-5 QCL Spot WH | Projecteur LED 5 W | 45 € | [Référence Thomann](https://www.thomann.fr/eurolite_led_pst_5_qcl_spot_wh.htm) |
 
-Noms courts conseillés ; espaces et accents acceptés. Éviter les noms commençant par un point et les caractères `/ \ : * ? " < > |`. Limite : 1024 WAV compatibles ; conserver moins de fichiers réduit le temps de scan et la mémoire utilisée. Envoi Web limité par défaut à 128 Mio par fichier.
+Le document [HARDWARE.md](HARDWARE.md) complète les informations sur la carte, ses connecteurs et ses variantes audio.
 
-Conversion avec FFmpeg :
+### Alimentation et branchements
+
+Le montage présenté partage l’alimentation commandée par l’interrupteur mural. Son raccordement à l’installation fixe relève d’une personne compétente en électricité. Les travaux se déroulent hors tension, après mise en sécurité du circuit contre une remise sous tension et vérification de l’absence de tension avec un appareil adapté. La couleur des fils ne suffit pas à identifier les conducteurs. La présence de la phase commandée, du neutre et, lorsque les équipements l’exigent, de la terre se vérifie sur l’installation réelle. Ces précautions suivent les principes de [prévention du risque électrique de l’INRS](https://www.inrs.fr/risques/electriques/prevention-risque-electrique.html).
+
+![Schéma de branchement de l’installation](misc/wiring.png)
+
+La carte reçoit une alimentation USB **5 V**. Les enceintes reçoivent leur alimentation USB et leur signal audio depuis la sortie **HEADPHONES / EARPHONES** de la carte. La prise **LINE IN** est une entrée audio. Les borniers de sortie pour haut-parleurs ne servent pas au raccordement d’enceintes déjà amplifiées.
+
+Deux ports d’un même chargeur ne constituent pas nécessairement deux alimentations électriquement isolées. La puissance disponible couvre les besoins cumulés de la carte et des enceintes. La fixation du moteur, de la boule et du projecteur respecte les charges admissibles et les consignes de leurs fabricants.
+
+## Préparation des sons
+
+### Sélection musicale
+
+L’effet repose sur des extraits qui commencent à un moment fort : refrain, montée ou percussion marquante. Le début et la durée sont préparés dans les fichiers source. Ni le lecteur ni le script de conversion ne recherchent ces passages automatiquement.
+
+La sélection complète figure dans [PLAYLIST.md](PLAYLIST.md). Quelques propositions :
+
+| Artiste | Titre |
+| :--- | :--- |
+| 10cc | I’m Not in Love |
+| Alain Chamfort | Manureva |
+| Alice Deejay | Better Off Alone |
+| Axel Bauer | Cargo de nuit |
+| Bibie | Tout doucement |
+| Bonnie Tyler | Total Eclipse of the Heart |
+| Bonnie Tyler | Holding Out for a Hero |
+| Bronski Beat | Smalltown Boy |
+| Catherine Lara | Nuit magique |
+| Céline Dion | All by Myself |
+| Corona | The Rhythm of the Night |
+| Corynne Charby | Boule de flipper |
+| Dalida | Depuis qu’il vient chez nous |
+| Dalida | Laissez-moi danser |
+| Dalida | Mourir sur scène |
+| Daniel Balavoine | Tous les cris les SOS |
+| Daniel Balavoine | Quand on arrive en ville |
+| Demis Roussos | Quand je t'aime |
+| Desireless | Voyage, Voyage |
+| Diana Ross | I'm Coming Out |
+| Diane Tell | Si j’étais un homme |
+| Eddy Mitchell | Couleur menthe à l'eau |
+| Elsa | T’en va pas |
+| Frankie Goes to Hollywood | Relax |
+| Gala | Freed from Desire |
+| George Michael | Careless Whisper |
+| Gilbert Montagné | Je veux tout |
+| Ginette Reno | J'ai besoin de parler |
+| Herbert Léonard et Julie Pietri | Amoureux fous |
+| Imagination | Just an Illusion |
+| Isabelle Adjani | Pull marine |
+| Jakie Quartz | Mise au point |
+| Jean-Jacques Goldman | Envole-moi |
+| Julie Pietri | Ève lève-toi |
+| Julio Iglesias | Je n’ai pas changé |
+| Kate Bush | Wuthering Heights |
+| Klaus Nomi | The Cold Song |
+| Kool & The Gang | Fresh |
+| Laura Branigan | Self Control |
+| Mariah Carey | Without You |
+| Michael Sembello | Maniac |
+| Ministry | I Wanted to Tell Her |
+| Mireille Mathieu | Bravo tu as gagné |
+| Mylène Farmer | Désenchantée |
+| Mylène Farmer | Sans contrefaçon |
+| Patrick Juvet | I Love America |
+| Phil Collins | In the Air Tonight |
+| Robert Miles | Children |
+| Rondò Veneziano | La Serenissima |
+| Sash! | Encore une fois |
+| Sheila & B. Devotion | Spacer |
+| Stéphanie de Monaco | Comme un ouragan |
+| Taxi | Cherchez le garçon |
+| Tears for Fears | Everybody Wants to Rule the World |
+| The Pointer Sisters | I'm So Excited |
+| The Weather Girls | It's Raining Men |
+| Thierry Hazard | Le Jerk ! |
+| Véronique Sanson | Vancouver |
+| Whitney Houston | I Wanna Dance With Somebody |
+| Whitney Houston | I Will Always Love You |
+
+### Format audio et noms de fichiers
+
+Le lecteur accepte les **WAV PCM entier signé 16 bits, mono ou stéréo, à 44,1 ou 48 kHz**. Les MP3, le PCM 24 bits, les échantillons flottants et le format WAV extensible ne sont pas pris en charge. Les WAV incompatibles sont exclus des tirages.
+
+Les espaces et les accents sont acceptés. Des noms courts facilitent les échanges HTTP ; les noms commençant par un point et les caractères `/ \ : * ? " < > |` sont à exclure. Le serveur accepte jusqu’à 255 octets pour un nom de WAV, mais un nom fortement encodé peut atteindre plus tôt la limite des en-têtes HTTP.
+
+La sélection accepte **1 024 WAV compatibles au maximum par playlist**. La liste Web est également limitée à 1 024 entrées. La limite de téléversement est de **128 Mio par fichier**, soit 134 217 728 octets. Cette limite concerne l’envoi Web ; la copie directe depuis un ordinateur ne passe pas par ce contrôle.
+
+Une conversion simple avec FFmpeg s’écrit :
+
 ```sh
 ffmpeg -i entree.wav -ar 44100 -c:a pcm_s16le sortie.wav
 ```
 
-Cette conversion conserve les canaux de la source. Ajouter `-ac 1` pour forcer le mono ou `-ac 2` pour forcer la stéréo. Mono et stéréo peuvent cohabiter sur la carte, sans réglage supplémentaire.
+Cette commande conserve le nombre de canaux de la source. L’option `-ac 1` impose le mono ; `-ac 2` impose la stéréo. Les fichiers mono et stéréo cohabitent sans réglage supplémentaire. Cette conversion seule ne normalise pas le niveau sonore.
 
-### Préparation avec le script macOS
+### Script de préparation macOS
 
-Le script [Process_WAV_for_SD_macOS.command](Process_WAV_for_SD_macOS.command) fonctionne sous **macOS uniquement**, avec `ffmpeg` et `ffprobe` installés. Par exemple, si Homebrew est déjà installé : `brew install ffmpeg`.
+Le script [Process_WAV_for_SD_macOS.command](Process_WAV_for_SD_macOS.command) fonctionne sous **macOS**, avec **FFmpeg** disponible dans le Terminal. Il traite les fichiers `.wav` et `.WAV` placés directement à côté de lui, sans parcourir les sous-dossiers. Il ne modifie pas le programme de l’ESP32 et ne découpe pas les extraits.
 
-1. Placer le script à côté des WAV source, déjà découpés si nécessaire.
-2. Au besoin, le rendre exécutable : `chmod +x Process_WAV_for_SD_macOS.command`.
-3. Le lancer depuis le Terminal avec `./Process_WAV_for_SD_macOS.command` ou par double-clic.
-4. Les conversions sont écrites dans **SD/** en WAV PCM16 **44,1 kHz stéréo**, et dans **MP3/** en MP3 128 kbit/s pour l'écoute sur ordinateur. Les originaux sont conservés. Les WAV dépassant 128 Mio après conversion sont ignorés. Disco ne lit pas les MP3.
-5. Choisir explicitement le volume cible et confirmer son nom. Le script vérifie qu'il s'agit d'un volume externe ou amovible, inscriptible et en FAT32, puis copie les WAV **à sa racine**, sans écraser les fichiers existants.
-6. Le script synchronise les écritures et tente de démonter le volume après copie. Ne retirer la carte qu'après confirmation du démontage ou éjection manuelle réussie.
+Avec Homebrew déjà installé, FFmpeg s’installe avec la commande suivante :
 
-Le script ne formate aucun disque. Les dossiers locaux SD/ et MP3/ ne sont pas à copier en tant que dossiers sur la carte. Les fichiers convertis portant déjà le même nom sont ignorés ; renommer les fichiers concernés pour retraiter une nouvelle version. Les noms qui deviennent identiques après nettoyage sont signalés et ignorés. Aucun nettoyage général des fichiers cachés du dossier de travail n'est effectué.
+```sh
+brew install ffmpeg
+```
 
-## Installer et configurer Arduino IDE
+Le script se place dans un dossier de travail contenant des copies des WAV à traiter. Son autorisation d’exécution et son lancement s’effectuent depuis le Terminal :
 
-1. Installer Arduino IDE 2.x.
-2. Ajouter cette URL dans Préférences → URL de gestionnaire de cartes supplémentaires :
+```sh
+chmod +x Process_WAV_for_SD_macOS.command
+./Process_WAV_for_SD_macOS.command
+```
+
+Le double-clic constitue une autre possibilité lorsque macOS autorise son exécution. Le script travaille toujours dans son propre dossier, indépendamment du dossier courant du Terminal.
+
+#### Fichiers produits
+
+Pour chaque source, le script nettoie le nom, puis prépare quatre versions dans `sounds/` :
+
+| Dossier local | Contenu | Usage |
+| --- | --- | --- |
+| `sounds/original/` | WAV PCM16, 44,1 kHz, stéréo, non normalisé, sans métadonnées | Version convertie de référence |
+| `sounds/norm_stereo/` | WAV PCM16, 44,1 kHz, stéréo, normalisé | Lecture stéréo avec des niveaux plus homogènes |
+| `sounds/norm_mono/` | WAV PCM16, 44,1 kHz, mono, normalisé | Version copiée automatiquement sur la carte SD |
+| `sounds/mp3/` | MP3 128 kbit/s issu du WAV stéréo normalisé | Écoute sur ordinateur ; non lu par Disco |
+
+Le dossier `original` contient une **conversion**, pas une sauvegarde à l’identique de la source : la fréquence, les canaux, la résolution et les métadonnées peuvent avoir changé.
+
+Les noms sont nettoyés pour limiter les problèmes de compatibilité : translittération des accents lorsque `iconv` le permet, remplacement des caractères réservés et des apostrophes par `_`, suppression des caractères de contrôle et des espaces ou points aux extrémités. Le script traite aussi certains noms réservés et tronque le nom de base à 250 caractères. Cette limite en caractères ne garantit pas la limite en octets du serveur pour tous les noms UTF-8.
+
+#### Normalisation sonore
+
+Les versions normalisées utilisent le filtre FFmpeg `loudnorm` en deux passes : une analyse du niveau, puis une conversion à partir des mesures. Le traitement vise à réduire les écarts de volume perçu entre les morceaux ; il ne s’agit pas d’une égalisation des graves et des aigus.
+
+Les trois valeurs se trouvent au début du script :
+
+| Réglage | Valeur | Signification |
+| --- | --- | --- |
+| `CIBLE_LUFS` | `-14` | Niveau sonore intégré visé |
+| `CIBLE_TP` | `-1.0` | Plafond de crête vraie visé, en dBTP |
+| `CIBLE_LRA` | `11` | Paramètre de plage dynamique visée, en LU |
+
+Le mono et la stéréo font l’objet de traitements distincts. Le script demande `linear=true` ; FFmpeg peut revenir à une normalisation dynamique lorsque les conditions du mode linéaire ne sont pas réunies. Les valeurs sont des cibles de traitement, pas une mesure de conformité réalisée sur chaque fichier final. La documentation du [filtre loudnorm](https://ffmpeg.org/ffmpeg-filters.html#loudnorm) détaille ces paramètres.
+
+#### Devenir des sources et reprise d’un traitement
+
+**Après la création réussie du MP3, le script retire le WAV source du dossier de travail** : il appelle `trash` si cette commande est disponible, sinon il utilise `rm -f`, qui supprime le fichier sans passage par la corbeille. Une copie indépendante des sources préserve les fichiers d’origine. La génération des autres versions a lieu avant cette étape ; les sorties déjà présentes peuvent toutefois provenir d’un traitement antérieur.
+
+Une sortie existante n’est pas écrasée : son étape de conversion est ignorée. Le script ne compare pas son contenu à la source et ne vérifie pas qu’elle utilise les réglages actuels. Une modification des cibles de normalisation nécessite donc de nouveaux noms ou le retrait préalable des anciennes sorties concernées. Deux sources qui aboutissent au même nom nettoyé ne sont pas automatiquement différenciées. Un échec de conversion peut laisser une sortie partielle, qui sera ensuite considérée comme existante.
+
+#### Copie sur la carte SD
+
+Après les conversions, le script recherche les dossiers de volumes dans `/Volumes`. Un seul volume détecté est présélectionné ; plusieurs volumes donnent lieu à un choix numéroté. Une confirmation par la touche Entrée précède la copie.
+
+Il copie **le contenu de `sounds/norm_mono/` à la racine du volume choisi**, sans écraser les fichiers existants. Tous les WAV présents dans ce dossier sont candidats à la copie, y compris ceux issus de traitements précédents. Le script ne crée pas de playlist par dossier sur la SD. Pour une playlist dédiée, les WAV se copient manuellement dans son dossier ou se déplacent ensuite depuis l’interface Web.
+
+Le script ne formate pas la carte, ne vérifie pas le FAT32, ne contrôle pas la limite de 128 Mio et ne certifie pas que le volume choisi est réellement une carte SD. La destination et son format se vérifient avant la confirmation. Les versions stéréo se copient manuellement depuis `sounds/norm_stereo/` lorsque la stéréo est souhaitée.
+
+#### Nettoyage et éjection
+
+Le script exécute un nettoyage dans `sounds/`, ses quatre dossiers de sortie et la racine du volume cible. Il appelle `dot_clean` lorsque disponible, supprime les fichiers cachés directement présents dans ces emplacements et certains dossiers système macOS. **Ce nettoyage ne se limite pas aux fichiers AppleDouble** : il peut notamment supprimer le cache `.disco-catalog.bin` de la playlist racine, qui sera reconstruit par Disco. Les sous-dossiers de playlists de la SD ne sont pas nettoyés récursivement par la boucle de suppression des fichiers cachés.
+
+Après copie, `sync` synchronise les écritures et `diskutil unmount` tente de démonter le volume. La carte se retire après confirmation du démontage, ou après une éjection manuelle réussie si le démontage a échoué. Les dossiers locaux `sounds/` ne sont pas destinés à être copiés en bloc sur la carte.
+
+## Préparation de la carte SD
+
+La carte utilise **FAT32**, avec une partition principale ; une table MBR constitue le choix recommandé. Le programme ne formate pas la carte et ne prend pas en charge exFAT. Une microSD de 64 Go convient après formatage en FAT32. Le formatage efface les données : une sauvegarde préalable conserve le contenu existant.
+
+Les WAV se placent soit à la racine, soit dans des dossiers de playlists directement à la racine. Le dossier **`www/`** contient l’interface Web. Exemple :
+
+| Chemin sur la carte | Usage |
+| --- | --- |
+| `/Titre.wav` | Playlist « Racine de la carte SD » |
+| `/Quotidien/Titre.wav` | Playlist « Quotidien » |
+| `/Soiree/Titre.wav` | Playlist « Soiree » |
+| `/www/index.html` | Page Web personnalisée |
+| `/www/style.css`, `/www/app.js`, `/www/icon-192.png` | Ressources de cette page |
+| `/wifi.txt` | Import facultatif des identifiants Wi-Fi |
+
+Le dossier `www` est réservé à l’interface ; les sous-dossiers imbriqués ne sont pas parcourus pour la musique. La carte s’insère avant la mise sous tension, sans remplacement à chaud.
+
+## Installation du programme
+
+### Environnement Arduino
+
+1. L’environnement utilisé est Arduino IDE 2.x.
+2. L’URL suivante figure dans **Préférences → URL de gestionnaire de cartes supplémentaires** :
+
+   ```text
    https://espressif.github.io/arduino-esp32/package_esp32_index.json
-3. Dans le gestionnaire de cartes, installer **esp32 par Espressif Systems, version 2.0.17 exactement**. Cette version 2.0.17 est la référence retenue après essais sans grésillement sur la carte cible. La migration 3.x est reportée ; ne pas compiler ce projet avec un cœur 3.x.
-4. Copier `Disco_ESP/config.example.h` en `Disco_ESP/config.local.h` s'il n'existe pas déjà.
-5. Ouvrir `Disco_ESP/Disco_ESP.ino`, avec tous ses fichiers voisins. Aucune bibliothèque supplémentaire à installer.
-6. Renseigner les réglages dans **config.local.h**. Pour une mise à jour, conserver les identifiants existants et vérifier `WIFI_FAST 1` : un ancien fichier personnel avec la valeur 0 ne sera pas modifié automatiquement.
+   ```
 
-### Tous les réglages de l'IDE
+3. Le gestionnaire de cartes contient **esp32 par Espressif Systems, version 2.0.17 exactement**. Cette version est la référence retenue après les essais sans grésillement sur la carte cible. La migration vers le cœur 3.x reste reportée.
+4. Une copie de `Disco_ESP/config.example.h`, nommée `Disco_ESP/config.local.h`, contient les réglages personnels. Un fichier personnel déjà présent est conservé lors des mises à jour.
+5. Le sketch ouvert est `Disco_ESP/Disco_ESP.ino`, avec tous les fichiers voisins du dossier. Aucune bibliothèque Arduino supplémentaire n’est nécessaire.
 
-Sélectionner la carte **ESP32 Arduino → ESP32 Dev Module** et son port série. Régler ensuite les options dans l'ordre du menu :
+### Options de compilation et téléversement
+
+La carte sélectionnée est **ESP32 Arduino → ESP32 Dev Module**, avec le port série correspondant. Les options apparaissent ci-dessous dans l’ordre du menu :
 
 | Option | Valeur |
 |---|---|
@@ -78,288 +258,318 @@ Sélectionner la carte **ESP32 Arduino → ESP32 Dev Module** et son port série
 | PSRAM | **Disabled** |
 | Upload Speed | **115200** |
 
-Régler le **moniteur série à 115200 bauds**.
+Le moniteur série utilise **115200 bauds**. Les options absentes de l’IDE restent à leur valeur par défaut. Le port USB relié au convertisseur série, marqué **UART**, sert au téléversement ; un câble USB de données est nécessaire. Le port d’alimentation seul ne remplace pas cette liaison.
 
-Laisser les options absentes de l'IDE à leur valeur par défaut. Si le téléversement ne démarre pas : maintenir BOOT, appuyer brièvement sur RST, relâcher BOOT quand le transfert commence.
+En cas de blocage au démarrage du téléversement, le bouton **BOOT** reste maintenu pendant une brève pression sur **RST**, puis se relâche lorsque le transfert commence.
 
-Ne pas effacer toute la flash lors des mises à jour ordinaires : l'urne et le volume y sont conservés. Un changement de partitionnement peut nécessiter un effacement, qui supprime ces réglages.
+Les mises à jour ordinaires n’effacent pas toute la mémoire flash : les urnes, le volume, le mode, la playlist active et les identifiants Wi-Fi mémorisés y sont conservés. Un changement de partitionnement peut nécessiter un effacement et supprimer ces réglages. Un redémarrage après téléversement compte comme un nouvel allumage et déclenche un tirage.
+
+### Interrupteurs DIP et codecs
+
+Sur la carte correspondant à cette sérigraphie, les positions retenues sont :
+
+| Interrupteur | Liaison | Position |
+|---|---|---|
+| 1 | IO13 / KEY2 | OFF |
+| 2 | IO13 / DATA3 | ON |
+| 3 | IO15 / CMD | ON |
+| 4 | IO13 / MTCK | OFF |
+| 5 | IO15 / MTDO | OFF |
+
+La SD utilise un bus **1 bit** : CLK = GPIO14, CMD = GPIO15, D0 = GPIO2. Le programme ne pilote pas l’alimentation par GPIO13. Une sérigraphie différente nécessite une vérification du schéma de la révision concernée ; les positions ne constituent pas une configuration universelle des cartes Audio Kit.
+
+| Profil | Codec | SDA / SCL | BCLK / LRCK / sortie | MCLK |
+|---|---|---|---|---|
+| 1 | AC101, adresse 0x1A | 33 / 32 | 27 / 26 / 25 | 0 |
+| 2 | ES8388 variante 5, adresse 0x10 ou 0x11 | 33 / 32 | 27 / 25 / 26 | 0 |
+| 3 | ES8388 variante 7, adresse 0x10 ou 0x11 | 18 / 23 | 5 / 25 / 26 | 0 |
+
+`CODEC_PROFILE=0` essaie ces profils. Un seul candidat doit répondre. L’AC101 est vérifié par sa signature ; l’ES8388 est détecté par une lecture à l’adresse attendue, sans identifiant unique. Aucun autre périphérique I²C ne partage ces broches dans ce montage.
+
+Une détection impossible ou ambiguë apparaît dans le journal série. Un profil forcé à `1`, `2` ou `3` correspond à une révision préalablement identifiée. [HARDWARE.md](HARDWARE.md) fournit les informations matérielles complémentaires.
 
 ## Réglages du lecteur
 
-Un seul fichier personnel à modifier : **Disco_ESP/config.local.h**. `config.h` sert uniquement de relais au code.
+**`Disco_ESP/config.local.h`** regroupe les réglages personnels. `config.h` sert de relais au code. Une modification des paramètres compilés prend effet après recompilation et téléversement.
 
 | Réglage | Valeur initiale | Rôle |
-|---|---|---|
-| `WIFI_SSID` | `"TON_SSID"` | Nom du réseau ; vide ou valeur initiale = Wi-Fi désactivé |
+| --- | --- | --- |
+| `WIFI_SSID` | `"TON_SSID"` | Nom du réseau ; vide ou valeur initiale = aucune connexion avec cette configuration |
 | `WIFI_PASSWORD` | `"TON_MOT_DE_PASSE"` | Mot de passe Wi-Fi |
-| `WIFI_TIMEOUT_MS` | `15000` | Durée maximale de tentative de connexion |
-| `WIFI_FAST` | `1` | `0` après le son ; `1` pendant le son, une fois la lecture commencée |
-| `AUDIO_VOLUME` | `55` | Volume initial de 0 à 100, utilisé en l'absence de valeur mémorisée |
-| `AUDIO_DIRECTORY` | `"/sdcard"` | Point de montage de la racine de la SD, à conserver pour cet usage |
-| `PLAYBACK_MODE` | `PLAYBACK_URN` | Mode initial ; le choix Random/Urne mémorisé depuis le Web est prioritaire |
-| `AVOID_LAST_TRACK` | `1` | Exclure le dernier titre, seulement en mode aléatoire |
-| `WEB_MAX_HTML_BYTES` | `1024U * 1024U` | Taille maximale de chaque fichier Web sur SD (1 Mio) |
-| `WEB_MAX_FILE_BYTES` | `128U * 1024U * 1024U` | Taille maximale d'un envoi Web |
-| `CODEC_PROFILE` | `0` | Détection automatique ; voir [HARDWARE.md](HARDWARE.md#profils-audio) |
+| `WIFI_TIMEOUT_MS` | `15000` | Durée maximale de tentative de connexion, en millisecondes |
+| `WIFI_FAST` | `1` | Connexion après le début effectif de lecture ; `0` la reporte à la fin |
+| `WIFI_SD_FILE` | `"/sdcard/wifi.txt"` | Fichier d’import des identifiants sur la SD |
+| `AUDIO_VOLUME` | `55` | Volume initial de 0 à 100, en l’absence de valeur mémorisée |
+| `AUDIO_DIRECTORY` | `"/sdcard"` | Point de montage de la SD ; les playlists se choisissent depuis le Web |
+| `PLAYBACK_MODE` | `PLAYBACK_URN` | Mode initial ; alternative : `PLAYBACK_RANDOM` |
+| `AVOID_LAST_TRACK` | `1` | Exclusion du dernier titre en mode Random, avec au moins deux WAV |
+| `WEB_MAX_FILE_BYTES` | `128U * 1024U * 1024U` | Taille maximale d’un WAV téléversé : 128 Mio |
+| `WEB_MAX_HTML_BYTES` | `1024U * 1024U` | Taille maximale de chaque ressource Web : 1 Mio |
+| `CODEC_PROFILE` | `0` | Détection automatique du profil audio |
+| `SERIAL_DIAGNOSTICS` | `1` | Journal Disco sur le port série |
+| `AUDIO_DIAGNOSTIC` | `0` | Lecture normale ; `1` active le signal de test interne |
 
-Recompiler après modification. Le mode et le volume réglés depuis le Web sont prioritaires sur `PLAYBACK_MODE` et `AUDIO_VOLUME`, y compris après une mise à jour du firmware sans effacement de flash.
+Le mode et le volume mémorisés depuis le Web priment sur `PLAYBACK_MODE` et `AUDIO_VOLUME`. Les identifiants Wi-Fi mémorisés priment également sur ceux du fichier de configuration. Un ancien `config.local.h` conserve ses valeurs, notamment `WIFI_FAST=0` s’il avait été configuré ainsi.
 
-### Wi-Fi normal et fast
+## Wi-Fi et identifiants sur la carte SD
+
+### Connexion normale ou rapide
 
 ```c
-#define WIFI_FAST 1  // par défaut : connexion une fois le morceau en cours de lecture
+#define WIFI_FAST 1  // connexion après le début effectif du morceau
 // ou
-#define WIFI_FAST 0  // connexion seulement après la fin du morceau
+#define WIFI_FAST 0  // connexion après la fin du morceau
 ```
 
-Le mode fast commence la connexion après avoir envoyé plus que la capacité des tampons DMA à I2S : le son a commencé à sortir. Un fichier très court peut se terminer avant ce seuil ; la connexion commence alors à sa fin. La page devient accessible après obtention d'une adresse IP, pas instantanément au premier échantillon.
+En mode rapide, la connexion commence une fois que plus que la capacité des tampons DMA a été transmise à I²S. Un morceau très court peut se terminer avant ce seuil ; la connexion commence alors à sa fin. La page devient accessible après obtention d’une adresse IP.
 
-Le mode normal minimise l'activité réseau pendant le morceau de démarrage. Le mode fast et les écoutes manuelles font fonctionner réseau et audio ensemble : leur stabilité dépend de la carte, de l'alimentation et de la SD. Le délai de démarrage audio n'est pas garanti ; il inclut notamment le scan, la sauvegarde NVS et l'initialisation du codec.
+Le mode normal minimise l’activité réseau pendant le morceau de démarrage. En mode rapide, comme pendant une écoute manuelle depuis le Web, le réseau et l’audio fonctionnent simultanément. Le Wi-Fi rapide est activé par défaut et a été confirmé fonctionnel sur la carte cible avec le cœur 2.0.17.
 
-Réseau **2,4 GHz**, personnel WPA/WPA2 ou ouvert ; pas de portail captif ni de Wi-Fi entreprise. Une tentative par démarrage, sans boucle de reconnexion. Si aucune lecture n'est possible, le lecteur tente tout de même le réseau pour permettre le diagnostic.
+Le réseau est un **Wi-Fi 2,4 GHz**, personnel WPA/WPA2 ou ouvert, sans portail captif ni authentification d’entreprise. Le programme effectue une tentative par démarrage, sans boucle de reconnexion. En l’absence de morceau lisible, il tente tout de même la connexion si des identifiants sont configurés.
 
-## Urne et tirage aléatoire
+### Import depuis `wifi.txt`
 
-### Urne — mode par défaut
-
-Tous les WAV compatibles sont mélangés une fois. Chaque allumage retire le premier morceau restant. Après épuisement, un nouvel ordre complet est créé au démarrage suivant.
-
-La page affiche les **prochains allumages dans l'ordre réel**, sans le titre déjà tiré. Consulter la page ne consomme rien. Chaque fichier apparaît une fois par cycle ; une répétition entre la fin d'un cycle et le début du suivant reste possible.
-
-Le bouton **Régénérer la liste** remet tous les morceaux dans un nouveau mélange sans lancer de lecture. Un ajout, une suppression ou un renommage réussi fait automatiquement la même chose. Les changements hors ligne sont détectés au prochain démarrage par une empreinte du catalogue trié. Remplacer le contenu d'un WAV compatible sans changer son nom conserve sa place ; utiliser le bouton pour forcer un mélange.
-
-### Random — aléatoire indépendant
-
-Choisir **Random** dans la section **Mode de fonctionnement**. Le choix est enregistré pour les prochains démarrages, sans interrompre le morceau actuel. `PLAYBACK_MODE` ne fournit que la valeur initiale lorsqu’aucun mode n’a encore été mémorisé.
-
-Un nouveau choix est effectué à chaque démarrage. Avec `AVOID_LAST_TRACK=1`, le dernier titre est exclu s'il existe au moins deux WAV. Ce mode ne possède pas d'ordre futur affichable. Un passage ultérieur au mode urne retrouve l'état conservé si le catalogue est inchangé.
-
-Le mélange et les tirages utilisent le générateur matériel avec sa source d'entropie active. La source SAR utilisée avant le démarrage est arrêtée avant I2S et Wi-Fi ; les mélanges demandés depuis le site utilisent le Wi-Fi déjà actif.
-
-## Interface Web
-
-Ouvrir **http://ADRESSE_IP/** depuis un appareil du même réseau. L'IP est affichée dans le moniteur série et dans la liste DHCP du routeur.
-
-### Lecture
-
-La liste déroulante contient tous les WAV et sélectionne le morceau en cours. Choisir un autre titre arrête le précédent, attend la libération du codec puis lance le nouveau depuis le début. **STOP** arrête la lecture ; le sélecteur revient sur « Choisir un morceau… », ce qui permet aussi de relancer le même titre.
-
-La barre de progression et les durées écoulée/totale sont actualisées environ toutes les 1,5 seconde. La position est une estimation calculée à partir des trames transmises, en tenant compte de la capacité DMA (écart possible d’environ un tampon audio). La barre n’est pas un contrôle de déplacement dans le morceau.
-
-Le slider de volume affiche la valeur pendant le déplacement et l’applique et la mémorise au relâchement, sans bouton de validation. Aucun enregistrement n’a lieu à chaque mouvement ; une valeur inchangée n’est pas réécrite. Les erreurs de sauvegarde sont affichées. Le volume demeure mémorisé après extinction.
-
-### Mode de fonctionnement
-
-Choisir **Random** ou **Urne**. Le mode est mémorisé pour les prochains allumages, sans consommer de morceau ni changer la lecture actuelle. En mode Urne, la liste compacte affiche les titres à venir dans leur ordre. **Régénérer la liste** remet tous les titres dans un nouveau mélange, sans lancer de son. Un changement de mode conserve l’urne existante ; les modifications de fichiers la reconstruisent, quel que soit le mode actif.
-
-### Fichiers
-
-Déposer un ou plusieurs WAV dans la zone dédiée, ou utiliser le sélecteur de fichiers, puis cliquer **Téléverser**. La liste compacte indique chaque nom, sa taille en Mio et les actions **Renommer** et **Supprimer**. Les fichiers restent à la racine de la carte. Un fichier existant n’est pas écrasé.
-
-Pendant une lecture, les téléversements, suppressions, renommages et régénérations d’urne sont bloqués côté interface et côté serveur. Appuyer sur STOP pour les effectuer. Le changement de titre, le volume et le mode restent accessibles. Les commandes Web sont traitées successivement.
-
-Les écoutes manuelles **ne consomment pas l’urne et ne changent pas le dernier tirage Random**. Le son sort sur le jack de la carte, pas dans le navigateur. La lecture ne s’enchaîne pas automatiquement.
-
-Serveur HTTP local sans mot de passe : les appareils du même réseau peuvent gérer le lecteur. Ne pas exposer le port 80 sur Internet. Des noms très longs ou fortement encodés peuvent dépasser la limite des en-têtes HTTP ; les raccourcir en cas d'erreur 431.
-
-## Coupures de courant
-
-Le retrait de l'urne ou le dernier tirage est sauvegardé **avant le premier son**. Un morceau coupé compte donc comme tiré ; aucune position n'est conservée et aucune reprise n'a lieu au démarrage suivant. Une coupure après sauvegarde mais avant sortie audio peut consommer un titre sans qu'il ait été entendu.
-
-En cas d'échec de sauvegarde du tirage, aucune lecture automatique n'est lancée. Un reset, y compris après téléversement, consomme également un titre. Un seul fichier compatible sera nécessairement rejoué à chaque allumage.
-
-La SD est lue pendant la lecture. Les modifications de fichiers sont réservées aux périodes d'arrêt. **Attendre la confirmation des opérations Web avant de couper l'alimentation** : FAT32 n'est pas journalisé. Les envois utilisent un fichier temporaire `.upload.part`, ignoré par le lecteur et nettoyé au démarrage ; cela ne garantit pas l'intégrité de la SD lors d'une coupure pendant une écriture. NVS gère l'usure de la flash mais ne remplace pas une alimentation stable.
-
-## Organisation et publication
-
-| Chemin | Contenu |
-|---|---|
-| `Disco_ESP/` | Sketch Arduino et sources |
-| `Disco_ESP/config.example.h` | Modèle public des réglages |
-| `Disco_ESP/config.local.h` | Réglages personnels, ignorés par Git |
-| `Disco_ESP/data/index.html` | Source de l'interface Web |
-| `Disco_ESP/page.cpp` | Page embarquée, générée et versionnée |
-| `HARDWARE.md`, `PLAYLIST.md` | Montage et sélection musicale |
-| `Process_WAV_for_SD_macOS.command` | Préparation des fichiers sur macOS |
-| `tools/embed_web.py` | Régénération de la page avec Python 3 |
-| `LICENSE`, `LICENSES/`, `THIRD_PARTY.md` | Licence et notices des dépendances |
-
-Pour actualiser la page de secours embarquée dans le firmware :
-```sh
-python3 tools/embed_web.py
-```
-Puis recompiler dans Arduino IDE. La page est embarquée dans le firmware comme secours. Pour modifier seulement le HTML/CSS/JavaScript après installation du firmware compatible, téléverser `Disco_ESP/data/index.html` depuis la section Fichiers → Mettre à jour l’interface Web, sans recompiler. Les modifications du code C/C++ ou des API nécessitent toujours un téléversement du firmware.
-
-Le `.gitignore` exclut les réglages personnels, les tests locaux, le rapport local de validation et les fichiers de compilation. Garder le modèle sans identifiants réels. Vérifier avant publication :
-```sh
-git check-ignore Disco_ESP/config.local.h tests/
-git ls-files '*config.local.h' 'tests/*'
-```
-La seconde commande ne doit rien afficher. Si ces fichiers étaient déjà suivis, les retirer de l'index sans les supprimer du disque :
-```sh
-git rm --cached --ignore-unmatch Disco_ESP/config.local.h
-git rm -r --cached --ignore-unmatch tests
-```
-
-Un fichier ignoré déjà publié demeure dans l'historique. Si des identifiants réels ont été exposés dans une ancienne configuration, changer le mot de passe et nettoyer l'historique. Ne pas publier de firmware compilé avec des identifiants privés.
-
-## Vérification sur matériel
-
-Le projet doit être validé sur la révision de carte utilisée : sortie jack, mode fast, volume pendant la lecture et coupures d'alimentation. Vérifier notamment :
-
-1. Trois WAV mono et stéréo à la racine : un seul morceau au démarrage, puis silence.
-2. Avec un WAV de test gauche/droite, vérifier la séparation des canaux sur les enceintes. Coupure pendant un morceau : démarrage suivant depuis le début du prochain titre de l'urne.
-3. Mode fast : apparition de la page pendant un morceau suffisamment long.
-4. Écoute manuelle puis arrêt : urne inchangée.
-5. Volume modifié et mémorisé : même niveau après remise sous tension.
-6. Modification de fichiers refusée pendant une lecture, autorisée après arrêt.
-
-La lecture audio et le Wi-Fi fast de la base Arduino 2.0.17 ont été confirmés par l’utilisateur sur sa carte. Les nouvelles commandes Web doivent encore être vérifiées sur matériel ; les tests logiciels ne remplacent pas ces essais.
-
-## Licence
-
-GPL-3.0-or-later. Voir [LICENSE](LICENSE) et [THIRD_PARTY.md](THIRD_PARTY.md) pour les pilotes adaptés et les notices à conserver.
-
-## Diagnostic : console et grésillements
-
-Le journal propre à Disco utilise directement `Serial`, à **115200 bauds**,
-avec `SERIAL_DIAGNOSTICS 1` dans `config.local.h`. Il est indépendant de
-**Core Debug Level** (qui reste utile pour les traces des pilotes Espressif).
-Ouvrir le moniteur série puis appuyer sur **RST** : les messages du démarrage
-peuvent être manqués si le moniteur est ouvert après la mise sous tension.
-Aucune attente du moniteur n'est ajoutée au démarrage.
-
-Les traces donnent la version Arduino, le volume effectif, le codec détecté,
-les broches I2S, le format du morceau, les erreurs et la connexion Wi-Fi.
-La durée maximale des lectures SD est affichée en fin de lecture ; ce chiffre
-ne prouve pas, à lui seul, qu'une coupure audio a eu lieu.
-
-Pour isoler un grésillement :
-
-1. Essayer `WIFI_FAST 0`, un volume Web de 25 à 35 et la sortie **EARPHONES**.
-   Le volume mémorisé depuis le Web prime sur `AUDIO_VOLUME`.
-2. Compiler avec `AUDIO_DIAGNOSTIC 1` : au démarrage, Disco produit une sinusoïde
-   de 1 kHz pendant 5 secondes, puis 2 secondes de silence numérique.
-   Le signal est généré en mémoire, sans lire de WAV ni consommer l'urne,
-   même sans SD. Le volume est temporairement fixé à 35, sans toucher au volume
-   mémorisé. Le Wi-Fi ne démarre qu'après le test.
-3. Comparer l'écoute avec un casque filaire sur EARPHONES, puis avec les enceintes.
-   Si seul le branchement des enceintes produit du bruit, essayer une alimentation
-   séparée pour elles afin de vérifier une éventuelle perturbation par l'alimentation
-   ou la masse commune.
-4. Si le test interne est propre mais les WAV grésillent, vérifier les fichiers
-   sur ordinateur, puis essayer un WAV PCM16 à 44,1 kHz et une autre carte SD.
-   Si le test interne grésille aussi au casque, transmettre les traces complètes :
-   cela oriente vers la configuration codec/I2S ou le matériel, sans permettre
-   encore de conclure lequel est en cause.
-5. Remettre `AUDIO_DIAGNOSTIC 0` après les essais.
-
-Le tampon DMA dispose de 16 blocs de 256 trames et les lectures SD sont regroupées
-par blocs de 4 Kio pour mieux absorber les variations de latence. Cela ne garantit
-pas la disparition d'un bruit analogique ou d'un problème d'horloge.
-
-## Voyant de connexion
-
-Le voyant vert **Connecté** indique que le navigateur reçoit une réponse de l’ESP32,
-pas simplement que le téléphone ou l’ordinateur dispose d’une connexion Internet.
-Une vérification est effectuée environ toutes les 1,5 seconde, avec un délai maximal
-de réponse de 3 secondes. Au premier échec, le voyant passe au rouge **Déconnecté**,
-les commandes sont désactivées et l’affichage de lecture est remis à l’état déconnecté.
-La page reste ouverte pour détecter le retour de la carte ; elle se recharge entièrement
-une seule fois lors du passage rouge → vert. Le premier affichage connecté ne provoque
-pas de rechargement en boucle. Si l’adresse IP de la carte change, ouvrir sa nouvelle adresse.
-
-La surveillance est suspendue pendant une commande ou un téléversement : le serveur
-ESP32 traite les requêtes successivement, et son occupation ne doit pas être confondue
-avec une déconnexion. Elle reprend à la fin de l’opération.
-
-## Smartphone et écran d’accueil
-
-L’interface s’adapte aux téléphones en portrait et paysage : commandes tactiles d’au moins 44 px, noms longs sur plusieurs lignes, prise en compte des encoches et de la zone du geste d’accueil. Le zoom du navigateur reste disponible. Le curseur de volume conserve son comportement : enregistrement au relâchement du doigt seulement.
-
-- **iPhone / iPad** : ouvrir l’adresse du lecteur dans Safari, puis **Partager → Sur l’écran d’accueil** (ou **Ajouter à l’écran d’accueil**). Activer « Ouvrir comme app » si cette option est proposée, puis Ajouter. Le nom est **Disco**, avec une boule disco dorée et une note de musique.
-- **Android** : ouvrir l’adresse dans Chrome, puis le menu **Ajouter à l’écran d’accueil**. Selon le navigateur et sa version, il peut s’agir d’un raccourci ouvrant le navigateur plutôt que d’une application autonome.
-- Le téléphone doit pouvoir joindre la carte sur son réseau local. Une adresse réservée dans le DHCP du routeur évite que le raccourci devienne obsolète si l’adresse change.
-
-Le manifeste demande un affichage autonome et les métadonnées iOS sont incluses. Le serveur ESP32 utilise HTTP : l’installation PWA complète n’est donc pas garantie, car elle exige normalement HTTPS (hors localhost). Aucun service worker ni cache hors connexion n’est installé ; le lecteur doit être accessible pour ouvrir la page. Au retour au premier plan, la page vérifie la connexion. La musique sort toujours sur le jack de la carte, pas sur le téléphone.
-
-Pour cette version, **reflasher une fois le firmware** afin d’ajouter les routes du manifeste et des icônes. Si un ancien `index.html` est déjà présent sur la SD, téléverser aussi le nouveau `Disco_ESP/data/index.html` depuis l’interface (ou restaurer la page embarquée), sinon il reste prioritaire. Les évolutions suivantes de la mise en page restent téléversables sans reflash. Les icônes et le manifeste sont embarqués et disponibles même dans `/recovery` ; leur modification nécessite de régénérer `page.cpp` / `web_assets.h` avec `python3 tools/embed_web.py`, puis de reflasher. Supprimer puis recréer le raccourci si le téléphone conserve une ancienne icône.
-
-Sources : [installation PWA (MDN)](https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps/Guides/Making_PWAs_installable) ; [configuration des applications Web iOS (Apple)](https://developer.apple.com/library/archive/documentation/AppleApplications/Reference/SafariWebContent/ConfiguringWebApplications/ConfiguringWebApplications.html).
-
-## Dossier Web sur la SD
-
-Cette version utilise `/www/index.html`. Déplacer l’ancien `index.html` de la racine vers `/www/index.html` : il n’est plus chargé à la racine. Les WAV restent à la racine, sans dossier. Le dossier `/www` est créé au premier téléversement Web.
-
-Exemple : `/www/index.html`, `/www/style.css`, `/www/app.js`, `/www/image.png`. Dans le HTML : `<link rel="stylesheet" href="style.css">`, `<script src="app.js"></script>` et `<img src="image.png" alt="">`. Pas de sous-dossiers. Utiliser des URL absolues pour les API (`/api/player`, etc.) et `/recovery`.
-
-Depuis Fichiers → Mettre à jour l’interface Web, sélectionner plusieurs fichiers, puis Téléverser les fichiers Web. Le nom est conservé et un fichier existant est remplacé. Les dépendances sont envoyées avant `index.html` ; un échec interrompt le lot. Cliquer ensuite sur Ouvrir l’interface. La liste affiche les tailles et permet la suppression. Les écritures nécessitent STOP. Formats : HTML, JS, CSS, PNG, JPG/JPEG, GIF, WebP, SVG, ICO, JSON et WOFF2 ; limite `WEB_MAX_HTML_BYTES` (1 Mio) par fichier, y compris images. Les noms ne doivent pas contenir de séparateurs ni commencer par un point.
-
-La racine HTTP redirige vers `/www/index.html` pour résoudre correctement les liens relatifs. Si l’index manque, est vide, trop gros ou inaccessible, l’interface embarquée prend le relais ; `/recovery` reste toujours disponible. Restaurer la page embarquée supprime seulement `/www/index.html`, en conservant les autres ressources. Pour une page HTML invalide ou un JS défectueux, passer manuellement par `/recovery`. Les ressources absentes renvoient 404.
-
-Les transferts utilisent un fichier temporaire puis un remplacement avec sauvegarde de l’ancien fichier. Un lot complet n’est pas atomique : ne pas couper le courant pendant la mise à jour. Les noms des sons, le volume et l’urne ne sont pas modifiés. Aucun accès HTTP général à la carte SD n’est ouvert.
-
-Nouvelles API : GET `/api/ui/files`, POST `/api/ui/upload` (corps brut, en-têtes `X-Manage: 1` et `X-File-Name` encodé par `encodeURIComponent`), POST `/api/ui/delete` (mêmes en-têtes). `/api/ui/reset` restaure la page embarquée. Reflasher une fois pour activer ces routes. Ensuite, les fichiers du dossier Web se mettent à jour sans reflash.
-
-Le dossier **`www` fourni dans le projet est prêt à copier à la racine de la SD** : index.html, style.css, app.js et icon-192.png. On peut aussi téléverser ces quatre fichiers depuis `/recovery`. La page de secours reste autonome. Après modification de sa source `Disco_ESP/data/index.html`, lancer `python3 tools/export_www.py` pour régénérer la version séparée pour la SD. Les icônes d’écran d’accueil et le manifeste restent servis par le firmware.
-
-## Identifiants Wi-Fi depuis la carte SD
-
-Au démarrage, les identifiants mémorisés en NVS sont utilisés en priorité sur `WIFI_SSID` et `WIFI_PASSWORD` du fichier `config.local.h`. En l’absence de valeur mémorisée, les paramètres compilés sont utilisés. Après la fin du morceau de démarrage (ou son arrêt/échec), le programme recherche `/wifi.txt` à la racine de la SD, puis importe et mémorise les identifiants valides. Aucune recherche de ce fichier ni écriture de ces identifiants en NVS n’a lieu pendant la lecture. Le mode WIFI_FAST garde son fonctionnement habituel.
-
-Copier `wifi.example.txt`, le renommer en `wifi.txt` et renseigner :
+Le fichier [wifi.example.txt](wifi.example.txt), copié sous le nom `wifi.txt` à la racine de la SD, accepte ce contenu :
 
 ```text
 ssid=MonReseau
 password=MonMotDePasse
 ```
 
-Texte UTF-8, fins de lignes Windows ou Unix acceptées. Les clés `ssid` et `password` sont obligatoires, en minuscules, une seule fois chacune. Ne pas mettre de guillemets ni d’espaces autour du signe `=` : les espaces dans les valeurs sont conservés. Les lignes vides et les commentaires commençant par `#` sont acceptés. SSID : 1 à 32 octets UTF-8 ; mot de passe : 8 à 63 octets, ou 64 caractères hexadécimaux ; `password=` pour un réseau ouvert. Maximum 512 octets pour le fichier. Le chemin est réglable avec `WIFI_SD_FILE` (défaut `/sdcard/wifi.txt`).
+Le fichier utilise UTF-8 et accepte les fins de ligne Windows ou Unix. Les clés `ssid` et `password` sont obligatoires, en minuscules, une seule fois chacune. Les valeurs ne comportent pas de guillemets ajoutés ; les espaces autour du signe `=` ne sont pas ignorés. Les lignes vides et les commentaires commençant par `#` sont acceptés.
 
-Après un import réussi, le fichier peut être retiré : les identifiants restent mémorisés après coupure du courant, même sans SD. S’il reste présent, aucune écriture NVS supplémentaire n’est effectuée tant que le contenu utile est identique. Un fichier mal formé ou un échec de mémorisation conserve les anciens paramètres. L’import valide le format, pas la connexion au réseau : un mot de passe erroné mais bien formé est mémorisé ; le corriger avec un nouveau `wifi.txt` puis redémarrer.
+| Élément | Limite |
+| --- | --- |
+| SSID | 1 à 32 octets UTF-8 |
+| Mot de passe | 8 à 63 octets, ou 64 caractères hexadécimaux |
+| Réseau ouvert | `password=` |
+| Taille du fichier | 512 octets maximum |
 
-Le port série annonce l’import ou son échec sans afficher le mot de passe. Le fichier SD contient les identifiants en clair : le retirer après import si souhaité. `wifi.txt` est exclu de Git ; seul le modèle sans identifiants personnels est fourni. Effacer complètement la mémoire flash efface aussi les identifiants mémorisés. Modifier seulement le fichier `.h` ne remplace pas une configuration déjà mémorisée : utiliser `wifi.txt` pour cela.
+Au démarrage, le lecteur utilise les identifiants mémorisés en NVS, ou à défaut ceux compilés dans `config.local.h`. **La recherche de `wifi.txt` et son import ont lieu après la fin du morceau de démarrage, son arrêt ou son échec**, jamais pendant cette lecture.
 
-### Import Wi-Fi différé
+| Situation | Prise en compte des nouveaux identifiants |
+| --- | --- |
+| `WIFI_FAST=1` et tentative déjà lancée | Au redémarrage suivant, sans interrompre la connexion en cours |
+| `WIFI_FAST=0` | Avant la première tentative de connexion, après le morceau |
+| Aucun SSID configuré | Après import, lors de la première tentative |
+| Aucun morceau lisible | Sans attente d’une lecture |
 
-Avec `WIFI_FAST=1`, la connexion pendant le morceau utilise les identifiants déjà mémorisés ou compilés. Si une tentative a été lancée, les identifiants importés après le morceau seront utilisés au prochain redémarrage, sans couper la connexion actuelle. Avec `WIFI_FAST=0`, ou si aucun SSID n’était configuré, l’import a lieu avant la première tentative et les nouveaux identifiants sont utilisés immédiatement. Sans morceau lisible, l’import est effectué sans attendre. Une coupure avant la fin du morceau empêche cet import : laisser terminer une fois le morceau pour mémoriser le nouveau réseau.
+Une coupure avant la fin du morceau empêche l’import : un cycle allant jusqu’à la fin ou un arrêt manuel permet sa mémorisation. Après succès, le fichier peut être retiré ; les identifiants persistent sans SD. Un fichier laissé en place ne provoque pas de réécriture NVS lorsque ses valeurs sont déjà mémorisées.
 
-### Choisir le premier morceau de l’urne
+Un fichier mal formé ou une erreur de sauvegarde conserve les anciens paramètres. La validation porte sur le format, pas sur la connexion : un mot de passe erroné mais bien formé reste mémorisé. Un nouveau `wifi.txt` permet sa correction. Le journal annonce le résultat sans afficher le mot de passe.
 
-Dans la liste des fichiers, le bouton flèche vers le haut devant chaque morceau régénère toute l’urne, place ce morceau en premier et mélange les autres sans doublon. Il active et mémorise le mode Urne. Aucun son n’est lancé : le morceau sera joué au prochain allumage. Arrêter la lecture avant cette action. Cette fonction nécessite le firmware mis à jour ; remplacer uniquement les fichiers Web ne suffit pas.
+Le fichier contient les identifiants en clair. `wifi.txt` et `config.local.h` sont ignorés par Git ; seuls les modèles sans secrets sont publics. Un effacement complet de la flash supprime les identifiants mémorisés. Une simple modification de `config.local.h` ne remplace pas une configuration Wi-Fi déjà enregistrée.
+
+## Playlists et modes de tirage
 
 ### Playlists par dossier
 
-Créez des dossiers directement à la racine de la carte SD, par exemple `Quotidien/`, `Soiree/` et `Weekend/`, puis placez les WAV dedans. Les fichiers à la racine restent utilisables dans « Racine de la carte SD ». Le dossier `www` est réservé à l’interface. Les sous-dossiers imbriqués ne sont pas parcourus. Noms de dossiers : moins de 128 octets UTF-8, sans séparateurs de chemin ni caractères réservés.
+Chaque dossier directement à la racine de la SD constitue une playlist : `Quotidien/`, `Soiree/`, `Weekend/`, etc. Les WAV à la racine appartiennent à **Racine de la carte SD**. Les noms de dossiers comptent moins de 128 octets UTF-8, sans séparateurs de chemin ni caractères réservés ; les dossiers cachés et `www` ne sont pas proposés.
 
-Dans « Mode de fonctionnement », arrêtez la lecture puis choisissez la playlist active. Ce choix est mémorisé et s’applique au prochain allumage ; il ne lance aucun son. Chaque dossier possède une urne persistante indépendante : changer de playlist puis revenir conserve la progression. Le réglage Random / Urne reste commun. L’ajout, suppression ou renommage de WAV régénère uniquement l’urne du dossier actif. Les téléversements et écoutes manuelles concernent aussi ce dossier.
+À l’arrêt, le sélecteur de la section **Mode de fonctionnement** active une playlist. Ce choix est mémorisé pour les prochains allumages, sans lancer de son. Chaque playlist possède sa propre urne persistante ; le retour à une playlist conserve sa progression si son catalogue n’a pas changé. Le mode Random ou Urne est commun au lecteur.
 
-Le bouton ↑ régénère l’urne de la playlist active avec le morceau choisi en premier. Les dossiers peuvent être créés, renommés et supprimés depuis l’interface Web. Si un dossier actif est retiré ou renommé hors ligne, la lecture échoue : choisissez un dossier existant dans l’interface. Une playlist vide ne produit aucun son.
+Les téléversements et les écoutes manuelles concernent la playlist active. Une playlist vide ne produit aucun son. Un dossier actif supprimé ou renommé depuis un ordinateur peut empêcher la lecture ; l’interface permet alors de sélectionner un dossier existant.
 
-Cette évolution nécessite de reflasher le firmware et de mettre à jour les fichiers `www` sur la carte SD.
+Les commandes **Créer**, **Renommer** et **Supprimer** sont disponibles à l’arrêt. La racine ne peut être ni renommée ni supprimée. Une création ajoute un dossier sans lancer de son ni changer la playlist active. Le renommage conserve l’ordre et la position de l’urne lorsqu’il aboutit. La suppression demande confirmation, efface les WAV et les caches techniques du dossier, puis le dossier ; le lecteur revient à la racine. Elle est refusée en présence de sous-dossiers ou d’autres fichiers, y compris certains fichiers cachés ajoutés par un ordinateur.
 
-### Gérer les playlists depuis le Web
+L’action **Déplacer** d’un WAV apparaît seulement lorsque plusieurs playlists sont disponibles. Elle propose une destination, refuse d’écraser un fichier existant et régénère les urnes source et destination.
 
-À l’arrêt, utilisez Créer, Renommer ou Supprimer sous le sélecteur de playlist. La racine ne peut pas être renommée ou supprimée. Renommer conserve l’ordre et le curseur de l’urne ; supprimer demande confirmation et efface les WAV du dossier, puis le dossier. Le lecteur revient à la racine. La suppression est refusée si le dossier contient des sous-dossiers ou des fichiers autres que des WAV.
+### Urne — mode initial
 
-Le bouton Déplacer de chaque morceau ouvre un sélecteur de destination. Aucun fichier existant n’est écrasé. Les urnes source et destination sont régénérées. Aucune de ces actions ne lance de son.
+Tous les WAV compatibles de la playlist sont mélangés. Chaque allumage retire le premier morceau restant ; après épuisement, un nouveau mélange complet est créé au démarrage suivant.
 
-Les changements sur la SD et la mémoire interne ne forment pas une transaction unique : évitez de couper l’alimentation pendant une modification. Une suppression interrompue peut laisser un dossier partiellement vidé. Après une erreur, actualisez et vérifiez le contenu.
+L’interface affiche les prochains titres dans leur ordre réel, avec leur durée à droite, sans le morceau déjà tiré. La consultation ne consomme rien. Chaque morceau apparaît une fois par cycle ; une répétition entre la fin d’un cycle et le début du suivant reste possible.
 
-### Démarrage accéléré : catalogue des WAV
+**Régénérer la liste** remet tous les titres dans une nouvelle urne sans lecture immédiate. Un ajout, une suppression ou un renommage de WAV réussi depuis le Web régénère l’urne de la playlist active, même si le mode Random est sélectionné.
 
-Chaque playlist possède un fichier technique `.disco-catalog.bin`, créé automatiquement lors du premier parcours complet. Aux démarrages suivants, le lecteur charge et contrôle la structure de cet index, sans parcourir le dossier ni vérifier les métadonnées de tous les fichiers. Le morceau sélectionné est ouvert normalement pour la lecture. Le tirage reste sauvegardé avant le son.
+En mode Urne uniquement, un bouton placé à droite de chaque WAV, avec les autres actions, **régénère l’urne avec ce titre en premier**. Les autres titres sont mélangés sans doublon. Aucun son n’est lancé : le titre choisi est réservé au prochain allumage. Cette action nécessite l’arrêt de la lecture.
 
-Un index absent, tronqué, incohérent ou ne correspondant plus au dossier déclenche un parcours complet. Les modifications Web reconstruisent le catalogue concerné. Les modifications effectuées depuis un ordinateur sont prises en compte lors de la vérification complète différée après la lecture. Un remplacement conservant exactement nom, taille et date ne peut pas être détecté par ces métadonnées : régénérez alors l’urne depuis le Web ou supprimez `.disco-catalog.bin`. Les WAV incompatibles peuvent entraîner un parcours complet à chaque démarrage ; retirez-les pour bénéficier du cache.
+### Random — tirage indépendant
 
-Le cache est facultatif : si son écriture échoue, la sélection reste possible avec un parcours complet. Les fichiers `.disco-catalog.bin` et `.disco-catalog.tmp` sont gérés automatiquement et supprimés avec leur playlist. Le premier démarrage reste plus long. Les logs indiquent les temps du montage SD et de la sélection/sauvegarde de l’urne, en microsecondes ; aucun gain chiffré n’est garanti sans mesure sur la carte.
+Le mode **Random** effectue un nouveau tirage à chaque allumage. Avec `AVOID_LAST_TRACK=1`, le dernier titre est exclu lorsque la playlist contient au moins deux WAV compatibles. Un unique titre est nécessairement rejoué.
 
-La liste des WAV affiche la taille et la durée (minutes:secondes). Les durées sont calculées lors du parcours des WAV puis stockées dans le catalogue : afficher la liste n’ouvre pas à nouveau tous les fichiers audio pendant la lecture. Une durée inconnue ou un WAV incompatible apparaît avec « — ». Le nouveau format de catalogue est reconstruit automatiquement une fois après cette mise à jour.
+Il n’existe pas de liste de prochains titres dans ce mode. Un changement de mode est mémorisé sans interrompre le morceau actuel, sans nouveau tirage et sans détruire l’urne conservée. Les écoutes manuelles ne consomment pas l’urne et ne modifient pas le dernier tirage Random.
 
-### Démarrage rapide et vérification différée
+Les tirages et mélanges utilisent le générateur matériel avec sa source d’entropie active, sans redémarrer sur une séquence pseudo-aléatoire identique. La source SAR employée avant la lecture est arrêtée avant l’activation de l’audio et du Wi-Fi ; les mélanges demandés depuis le Web utilisent le Wi-Fi déjà actif.
 
-Avant le son, le lecteur charge le catalogue, tire un morceau, valide uniquement son en-tête WAV puis sauvegarde le tirage en NVS. Un catalogue manquant, corrompu ou vide déclenche un parcours complet. Si le morceau choisi manque ou est incompatible, le catalogue est reconstruit et un nouveau tirage est tenté une fois, sans consommer le tirage invalide.
+## Interface Web
 
-La vérification complète s’exécute après la lecture (ou STOP), dans la tâche du serveur Web, lorsqu’aucune lecture n’est active. Elle conserve la progression de l’urne si la liste des morceaux n’a pas changé ; sinon elle la reconstruit. Elle nécessite que le serveur Wi-Fi soit démarré. Si une autre lecture a déjà commencé, elle est reportée ; un prochain contrôle de connexion de la page la déclenche à l’arrêt. Les modifications Web continuent de mettre à jour les catalogues immédiatement. Une coupure avant la vérification différée peut donc reporter la détection des ajouts faits depuis un ordinateur au prochain cycle complet.
+L’adresse est **`http://ADRESSE_IP/`**, depuis un appareil du même réseau. L’IP apparaît dans le moniteur série et dans la liste DHCP du routeur. L’interface fonctionne sans Internet et sans ressources chargées depuis un CDN.
 
-Les logs BOOT distinguent désormais : catalogue (cache ou reconstruction), chargement de l’urne et tirage, vérification du WAV choisi, sauvegarde NVS avant audio, éventuelle reconstruction de secours, et vérification complète après lecture. Le montage SD conserve son chronométrage séparé. Les temps sont en microsecondes.
+### Lecture et volume
+
+La liste déroulante contient les WAV de la playlist active et sélectionne le morceau en cours. La sélection d’un autre titre arrête le précédent, attend la libération du codec puis lance le nouveau depuis le début. **STOP** arrête la lecture et remet le sélecteur sur « Choisir un morceau… », ce qui permet de relancer le même titre.
+
+Le son sort sur le jack de la carte, pas dans le navigateur. Un titre arrive à son terme sans enchaînement automatique.
+
+La position et les durées écoulée et totale sont actualisées environ toutes les 1,5 seconde. Une transition visuelle de 2,5 secondes adoucit l’avancée de la barre. La position est une estimation à partir des trames transmises et de la capacité DMA ; la barre ne permet pas de se déplacer dans le morceau.
+
+Le curseur de volume affiche la valeur pendant son déplacement, puis l’applique et la mémorise au relâchement, sans validation supplémentaire. Une valeur inchangée n’est pas réécrite. Les erreurs de sauvegarde sont affichées et le réglage persiste après extinction.
+
+### Fichiers et progression des téléversements
+
+La zone de dépôt accepte plusieurs WAV ; le sélecteur de fichiers constitue une alternative. Le bouton **Téléverser** lance leur envoi successif vers la playlist active. Un WAV existant n’est pas écrasé. La liste affiche le nom, la taille en Mio, la durée et les actions disponibles sous forme d’icônes : renommage, suppression, déplacement et premier titre de l’urne selon le contexte.
+
+Pendant la copie, l’interface affiche le **nom du fichier et sa position dans le lot**. La barre indique le **pourcentage du fichier en cours**, son **débit moyen** et une **estimation du temps restant**. Le débit est exprimé en Kio/s ou Mio/s ; l’estimation se stabilise après le début du transfert et ne représente pas le temps de tout le lot.
+
+À 100 %, le navigateur attend encore la confirmation du lecteur avant d’afficher « Terminé ». Cette étape distingue la fin de l’envoi de la validation et de l’enregistrement côté carte. Les mêmes informations sont disponibles pour les fichiers Web. Le débit dépend du réseau, de la carte SD et du traitement sur l’ESP32 ; une copie directe avec un lecteur de cartes évite ce transfert réseau.
+
+Les modifications de fichiers, la gestion et le changement de playlist ainsi que les régénérations d’urne sont bloqués pendant la lecture, dans l’interface et sur le serveur. Le changement de titre, le volume et le mode restent accessibles. Les commandes sont traitées successivement. Les listes se mettent à jour après les opérations ; un clic sur **Connecté** recharge la page entière lorsqu’aucune commande n’est en cours.
+
+### Connexion et animation
+
+Le voyant vert **Connecté** indique que le navigateur reçoit une réponse du lecteur, et non une simple connexion à Internet. Une vérification a lieu environ toutes les 1,5 seconde, avec un délai maximal de réponse de 3 secondes. Un échec passe le voyant au rouge, désactive les commandes et remet l’affichage de lecture à l’état déconnecté.
+
+Au retour du lecteur, la page se recharge une seule fois lors du passage rouge → vert. Le premier affichage connecté ne déclenche pas de rechargement en boucle. La surveillance est suspendue pendant les commandes et les téléversements pour éviter de confondre un serveur occupé avec une déconnexion. Si l’adresse IP change, la nouvelle adresse devient nécessaire.
+
+La boule à facettes dorée en haut de page tourne pendant la lecture, avec des scintillements, des reflets et un léger assombrissement. À l’arrêt ou à la déconnexion, la boule s’immobilise et les effets disparaissent. Les animations respectent le réglage de réduction des mouvements du navigateur ou du système. Ces effets visuels ne commandent pas la boule physique.
+
+### Smartphone et écran d’accueil
+
+L’interface s’adapte aux téléphones en portrait et paysage, avec des commandes tactiles, des noms longs sur plusieurs lignes et un zoom disponible.
+
+Sur iPhone ou iPad, l’ajout depuis Safari passe par **Partager → Sur l’écran d’accueil** ou **Ajouter à l’écran d’accueil**, selon la version. Sur Android, l’option correspondante se trouve dans le menu du navigateur. Le raccourci porte le nom **Disco**, avec une icône de boule dorée et une note de musique. Selon le navigateur, il s’ouvre en mode autonome ou dans une fenêtre classique.
+
+Le téléphone doit joindre le lecteur sur le réseau local. Une réservation DHCP sur le routeur stabilise l’adresse. Le manifeste demande un affichage autonome, mais le serveur reste en HTTP : l’installation comme application Web complète n’est pas garantie. **Aucun service worker ni cache hors connexion n’est installé** ; la page ne se charge pas lorsque le lecteur est inaccessible. Au retour au premier plan, la connexion est vérifiée.
+
+### Accès réseau
+
+Le serveur HTTP local ne possède pas de mot de passe : les appareils du même réseau peuvent gérer le lecteur. Le port 80 reste réservé au réseau local, sans exposition directe sur Internet. Une erreur HTTP 431 peut indiquer un nom de fichier trop long après encodage ; un nom plus court réduit la taille de l’en-tête.
+
+## Mise à jour de l’interface Web
+
+### Dossier `www` et page de secours
+
+Le dossier **`www/` fourni par le projet se copie à la racine de la SD**. Il contient `index.html`, `style.css`, `app.js` et `icon-192.png`. Le lecteur cherche `/www/index.html` ; un ancien `index.html` placé directement à la racine n’est pas utilisé.
+
+Les fichiers CSS, JavaScript, images et polices se placent dans ce même dossier, sans sous-dossiers. Les liens relatifs fonctionnent entre ces ressources ; les appels API utilisent des chemins absolus tels que `/api/player`.
+
+La racine HTTP redirige vers `/www/index.html` lorsqu’il est disponible. Si l’index est absent, vide, trop volumineux ou inaccessible, la page embarquée prend le relais. **`/recovery`** reste disponible indépendamment de la page SD. Un HTML invalide ou un JavaScript défectueux nécessite l’ouverture manuelle de cette adresse ; une ressource absente renvoie une erreur 404.
+
+### Téléversement depuis le navigateur
+
+La section **Fichiers → Mettre à jour l’interface Web** accepte plusieurs fichiers. Le nom est conservé ; contrairement aux WAV, **une ressource Web de même nom est remplacée**. Les dépendances sont envoyées avant `index.html` et un échec interrompt le lot. Le lien **Ouvrir l’interface** charge ensuite la page mise à jour.
+
+Les formats acceptés sont HTML, JS, CSS, PNG, JPG/JPEG, GIF, WebP, SVG, ICO, JSON et WOFF2. La limite `WEB_MAX_HTML_BYTES`, de 1 Mio par défaut, s’applique à chaque fichier, images comprises. Les noms ne commencent pas par un point et ne contiennent pas de séparateur de chemin. Les écritures nécessitent l’arrêt de la lecture.
+
+**Restaurer la page embarquée** supprime uniquement `/www/index.html` ; les autres ressources restent sur la SD. Les transferts Web utilisent un fichier temporaire et une sauvegarde de l’ancien fichier lors de son remplacement. Le lot entier n’est pas atomique : une interruption peut laisser des fichiers de versions différentes. Les morceaux, le volume et les urnes ne sont pas modifiés par cette opération. Il n’existe pas d’accès HTTP général au contenu de la SD.
+
+### Source et régénération
+
+`Disco_ESP/data/index.html` est la source autonome de l’interface et de la recovery. Après une modification, les commandes suivantes régénèrent la version SD séparée et les ressources embarquées :
+
+```sh
+python3 tools/export_www.py
+python3 tools/embed_web.py
+```
+
+La mise à jour de `www/` suffit pour la page SD lorsque le firmware possède déjà les API nécessaires. La mise à jour de la recovery embarquée nécessite une recompilation et un téléversement du firmware. Les changements de code C/C++ ou d’API nécessitent également cette étape.
+
+La page autonome `Disco_ESP/data/index.html` peut aussi remplacer `/www/index.html` depuis la recovery. Les icônes d’écran d’accueil et le manifeste sont servis par le firmware ; leur modification nécessite une régénération des ressources embarquées et un nouveau téléversement. La recréation du raccourci peut être nécessaire si le téléphone conserve une ancienne icône.
+
+Les routes de gestion Web sont `GET /api/ui/files`, `POST /api/ui/upload`, `POST /api/ui/delete` et `POST /api/ui/reset`. L’envoi utilise un corps brut et les en-têtes `X-Manage: 1` et `X-File-Name`, ce dernier encodé avec `encodeURIComponent` ; la suppression utilise les mêmes en-têtes de gestion et de nom.
+
+## Démarrage et coupures de courant
+
+### Catalogue et vérification différée
+
+Chaque playlist dispose d’un catalogue technique `.disco-catalog.bin`, créé lors du premier parcours complet. Il mémorise les fichiers compatibles et leurs durées. Avant le son, le lecteur charge ce catalogue, tire un titre, vérifie uniquement son en-tête WAV, puis sauvegarde le tirage en mémoire non volatile (**NVS**).
+
+Un catalogue absent, corrompu ou vide déclenche un parcours complet. Si le titre choisi manque ou n’est plus compatible, le lecteur reconstruit le catalogue et tente un nouveau tirage une fois, sans consommer le tirage invalide. Une erreur d’écriture du cache n’empêche pas le fonctionnement, mais peut imposer un nouveau parcours complet au démarrage suivant.
+
+La vérification de tous les WAV intervient après la lecture ou STOP, dans la tâche du serveur Web et uniquement à l’arrêt. Elle conserve l’urne lorsque la liste des titres n’a pas changé ; sinon elle la reconstruit. Elle nécessite que le serveur ait démarré. Si une autre lecture commence avant cette vérification, celle-ci est reportée ; un contrôle de connexion ultérieur peut la déclencher à l’arrêt.
+
+Les modifications Web mettent les catalogues à jour immédiatement. Les ajouts effectués depuis un ordinateur peuvent n’apparaître qu’après cette vérification différée. Une coupure avant sa réalisation, ou l’absence de serveur Wi-Fi, peut reporter leur prise en compte. Après des changements hors ligne, la suppression de `.disco-catalog.bin` dans le dossier concerné force un parcours complet au prochain démarrage ; une régénération depuis le Web déclenche aussi une reconstruction.
+
+Le remplacement d’un WAV compatible sans changement de nom conserve sa place dans l’urne lors du contrôle du catalogue ; une régénération explicite produit un nouvel ordre. Les durées affichées proviennent du catalogue et peuvent rester anciennes jusqu’à sa mise à jour. Elles apparaissent à côté des tailles dans la liste des fichiers et à droite des titres de l’urne ; une durée inconnue apparaît sous la forme « — ».
+
+Les fichiers `.disco-catalog.bin` et `.disco-catalog.tmp` sont gérés automatiquement et supprimés avec leur playlist. Le premier démarrage peut être plus long. Le délai audio dépend notamment du montage SD, du catalogue, de la sauvegarde NVS et de l’initialisation du codec ; aucun délai fixe n’est garanti.
+
+### Comportement lors d’une coupure
+
+Le retrait de l’urne ou le dernier tirage Random est enregistré **avant le premier son**. Un morceau interrompu compte donc comme tiré. Aucune position de lecture n’est conservée. Une coupure après sauvegarde mais avant la sortie audio peut consommer un titre sans qu’il soit entendu.
+
+Un échec de sauvegarde du tirage empêche la lecture automatique. Une réinitialisation, notamment après téléversement du firmware, compte également comme un nouvel allumage.
+
+La lecture d’un morceau ne modifie pas son fichier WAV. Les modifications Web sont réservées aux périodes d’arrêt et leur confirmation précède la coupure de l’alimentation. Une vérification de catalogue après lecture peut aussi écrire sur la SD. FAT32 n’est pas journalisé : une coupure pendant une écriture peut endommager les données. Les téléversements WAV passent par un fichier temporaire `.upload.part`, ignoré par le lecteur ; ce mécanisme ne garantit pas l’intégrité de toute la carte lors d’une coupure.
+
+La gestion des playlists combine des opérations sur la SD et en NVS sans transaction unique. Une suppression interrompue peut laisser un dossier partiellement vidé. Après une erreur, le contenu réel se vérifie avant la poursuite des modifications.
+
+## Diagnostic et vérification
+
+### Console série
+
+Le journal Disco utilise directement `Serial` à **115200 bauds**, avec `SERIAL_DIAGNOSTICS=1`. Il est indépendant de **Core Debug Level**, qui reste utile aux traces Espressif. Une pression sur RST lorsque le moniteur est déjà ouvert permet de voir les premières lignes. Le programme n’attend pas l’ouverture du moniteur au démarrage.
+
+Les traces indiquent la version Arduino, le volume, le codec, les broches I²S, le format audio, les erreurs et la connexion Wi-Fi. Les lignes `BOOT` distinguent le catalogue, le chargement de l’urne et le tirage, la vérification du WAV, la sauvegarde NVS et la vérification différée. Le montage SD est chronométré séparément. Les durées sont en microsecondes : **1 000 µs = 1 ms**.
+
+La durée maximale des lectures SD est affichée en fin de morceau ; elle ne constitue pas, seule, une preuve de sous-alimentation des tampons audio.
+
+### Grésillements et signal de test
+
+Le premier point de contrôle est le cœur Arduino **2.0.17**, retenu après des essais sans grésillement. Un essai avec `WIFI_FAST=0`, un volume de 25 à 35 et un casque sur HEADPHONES / EARPHONES permet de comparer les conditions d’écoute. Le volume mémorisé depuis le Web reste prioritaire sur `AUDIO_VOLUME`.
+
+Avec `AUDIO_DIAGNOSTIC=1`, le lecteur produit au démarrage une sinusoïde de 1 kHz pendant 5 secondes, puis 2 secondes de silence numérique. Le signal est généré en mémoire, sans WAV, sans consommation de l’urne et même sans SD. Son volume est temporairement fixé à 35, sans modification du réglage mémorisé. Le Wi-Fi démarre après le test. La valeur `0` rétablit ensuite la lecture normale.
+
+Un test interne propre avec des WAV bruyants oriente vers les fichiers ou la lecture SD. Un bruit également présent au casque pendant le test interne oriente plutôt vers la configuration codec/I²S ou le matériel, sans suffire à identifier la cause. Une comparaison avec les enceintes alimentées séparément aide à isoler une perturbation liée à l’alimentation ou à une masse commune.
+
+Le DMA utilise 16 blocs de 256 trames et les lectures SD des blocs de 4 Kio. Ces tampons absorbent certaines variations de latence ; ils ne corrigent pas un défaut analogique ou d’horloge.
+
+### Contrôles sur la carte réelle
+
+La validation dépend de la révision de carte et du montage. Les points suivants couvrent les fonctions principales :
+
+1. Un seul WAV démarre à la mise sous tension, puis le lecteur reste silencieux.
+2. Les fichiers mono et stéréo sont lus ; un fichier de test gauche/droite confirme la séparation des canaux.
+3. Une coupure pendant un titre ne provoque pas de reprise ; l’urne passe au titre suivant au prochain démarrage.
+4. Le mode rapide rend la page accessible pendant un morceau suffisamment long.
+5. Une écoute manuelle et STOP laissent l’urne inchangée.
+6. Le volume, le mode et la playlist active sont conservés après extinction.
+7. Les opérations sur les fichiers sont refusées pendant la lecture et permises à l’arrêt.
+8. Les téléversements WAV et Web affichent leur progression, leurs erreurs éventuelles et la confirmation finale.
+9. La gestion des playlists, le déplacement des WAV et les deux formes de régénération produisent l’ordre attendu.
+10. L’import de `wifi.txt` respecte le report après lecture et la priorité des identifiants mémorisés.
+11. La recovery reste accessible lorsque la page SD est absente ou défectueuse.
+
+La lecture audio et le Wi-Fi rapide ont été confirmés sur la carte cible avec le cœur 2.0.17. Les vérifications logicielles ne remplacent pas les essais physiques de chaque fonction et de chaque révision matérielle.
+
+## Organisation du projet et publication
+
+| Chemin | Contenu |
+| --- | --- |
+| `Disco_ESP/` | Sketch Arduino et sources |
+| `Disco_ESP/config.example.h` | Modèle public des réglages |
+| `Disco_ESP/config.local.h` | Réglages personnels, ignorés par Git |
+| `Disco_ESP/data/` | Source autonome de la page, icônes et manifeste |
+| `Disco_ESP/page.cpp`, `Disco_ESP/web_assets.h` | Ressources embarquées générées |
+| `www/` | Interface prête à copier sur la SD |
+| `wifi.example.txt` | Modèle d’import Wi-Fi sans identifiants personnels |
+| `HARDWARE.md` | Documentation matérielle complémentaire |
+| `PLAYLIST.md` | Sélection musicale |
+| `Process_WAV_for_SD_macOS.command` | Préparation et copie des sons sous macOS |
+| `misc/wiring.png` | Schéma de branchement référencé dans ce document |
+| `tools/export_www.py` | Export de la version SD avec CSS et JavaScript séparés |
+| `tools/embed_web.py` | Génération de la page et des ressources embarquées |
+| `LICENSE`, `LICENSES/`, `THIRD_PARTY.md` | Licence et notices des dépendances |
+
+Le `.gitignore` exclut les réglages privés, `wifi.txt`, les tests locaux, le rapport local de validation, les fichiers audio et les sorties de compilation. La vérification des exclusions utilise notamment :
+
+```sh
+git check-ignore Disco_ESP/config.local.h wifi.txt tests/
+git ls-files '*config.local.h' '*wifi.txt' 'tests/*'
+```
+
+La seconde commande ne retourne aucun fichier privé ou test suivi. Si ces fichiers étaient déjà suivis, leur retrait de l’index, sans suppression locale, utilise :
+
+```sh
+git rm --cached --ignore-unmatch Disco_ESP/config.local.h wifi.txt
+git rm -r --cached --ignore-unmatch tests
+```
+
+Un fichier ignoré mais déjà publié reste dans l’historique. Des identifiants exposés nécessitent un changement du mot de passe et un nettoyage de l’historique. Les firmwares compilés avec des identifiants privés restent hors du dépôt public.
+
+Dépôt du projet : [github.com/gjacquemin/disco](https://github.com/gjacquemin/disco).
+
+## Licence
+
+Le programme est distribué sous **GPL-3.0-or-later**. [LICENSE](LICENSE), [LICENSES/](LICENSES/) et [THIRD_PARTY.md](THIRD_PARTY.md) précisent les licences des composants et les notices à conserver. Cette licence logicielle ne couvre pas les droits sur les enregistrements musicaux utilisés.
