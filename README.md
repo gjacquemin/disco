@@ -46,8 +46,6 @@ Le montage présenté est commandé par l’interrupteur mural. Son raccordement
 
 ![Schéma de branchement de l’installation](misc/wiring.png)
 
-La carte reçoit une alimentation USB **5 V**. Les enceintes reçoivent leur alimentation USB et leur signal audio depuis la sortie **HEADPHONES / EARPHONES** de la carte.
-
 ## Préparation des sons
 
 ### Sélection musicale
